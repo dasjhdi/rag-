@@ -184,8 +184,8 @@ CookHero 面向厨房新手、健身/减脂/控糖人群、健康饮食倡导者
    source .venv/bin/activate  # Windows: .venv\Scripts\activate
    pip install -r requirements.txt
    
-   # 初始化数据库
-   python -m scripts.howtocook_loader
+   # 拉取并灌入 HowToCook 菜谱语料（PostgreSQL + Milvus）
+   python -m scripts.ingest_recipes --sync
    
    # 启动后端服务
    uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -363,6 +363,47 @@ database:
 ```
 
 详细配置说明见 `config.yml` 文件中的注释。
+
+---
+
+### 3. 菜谱语料灌库 (`scripts/ingest_recipes.py`)
+
+`scripts/sync_data.py` 只负责把 HowToCook 的 Markdown 语料克隆/更新到 `data/HowToCook`，
+真正把语料写入 PostgreSQL 与 Milvus 的是 `scripts/ingest_recipes.py`。
+**请先启动基础设施（第 3 步）再执行灌库**，脚本需要在仓库根目录运行（`config.yml` 与
+`data/` 都按相对路径解析）。
+
+```bash
+# 拉取语料并灌库（首次推荐）
+python -m scripts.ingest_recipes --sync
+
+# 语料已存在，仅重新灌库
+python -m scripts.ingest_recipes
+```
+
+| 参数 | 说明 |
+| --- | --- |
+| `--sync` | 灌库前先克隆/更新 HowToCook 语料到 `data/HowToCook` |
+| `--rebuild` | 删除并重建 Milvus 的 `cook_hero_recipes` collection（更换嵌入模型或表结构变更时使用） |
+| `--dry-run` | 只解析语料并打印数量，不写入任何数据库 |
+| `--batch-size` | 每批写入的文档/chunk 数量，默认 `64` |
+| `--limit` | 只灌入前 N 篇文档，便于冒烟测试 |
+
+灌库内容：
+
+- 解析 `data/HowToCook/dishes`（菜谱）与 `data/HowToCook/tips`（技巧），
+  并自动生成整体/分类/难度索引文档用于推荐。
+- 父文档写入 PostgreSQL 的 `knowledge_documents` 表（全局文档 `user_id` 为空）。
+- 切分后的 chunk 写入 Milvus 的 `cook_hero_recipes` collection（dense + BM25 混合检索）。
+- 脚本是**幂等**的：重复执行会先清除旧的全局文档与向量再写入，不会产生重复数据。
+- 结束时会刷新元数据缓存，并清空 Redis(L1) 与 Milvus(L2) 的检索缓存，
+  因此无需重启后端即可检索到新语料。
+
+> **提示**：嵌入模型（`BAAI/bge-small-zh-v1.5`）首次使用会自动下载并缓存。
+> 缓存完成后，建议设置 `HF_HUB_OFFLINE=1` 再启动后端或灌库，
+> 否则 HuggingFace 客户端会先做一次网络探测，在网络受限时可能长时间重试。
+
+参考规模：完整语料约 409 篇文档 / 1944 个 chunk。
 
 ---
 

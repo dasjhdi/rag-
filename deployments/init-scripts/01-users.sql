@@ -15,6 +15,21 @@
  Date: 23/12/2025 23:30:45
 */
 
+-- ============================================================================
+-- Prerequisites for the schema created by these init scripts.
+-- Required on a fresh database, otherwise the later scripts fail.
+-- ============================================================================
+-- uuid_generate_v4() used by conversations/messages/agent tables
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Trigger function referenced by 02-conversations.sql and 07-agent_sessions.sql
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
 -- ----------------------------
 -- Table structure for users
