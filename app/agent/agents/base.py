@@ -39,6 +39,11 @@ class BaseAgent(ABC):
     4. 重复直到任务完成
     """
 
+    # 模型始终没有产出正文时给用户的兜底提示
+    EMPTY_ANSWER_FALLBACK = (
+        "抱歉，这次没能生成有效回复，请重试一次或换一种说法描述你的需求。"
+    )
+
     def __init__(self, config: AgentConfig):
         """
         初始化 Agent。
@@ -261,6 +266,9 @@ class BaseAgent(ABC):
             user_id=context.user_id,
         )
 
+        produced_any_content = False
+        retried_empty_answer = False
+
         for iteration in range(self.max_iterations):
             try:
                 with llm_context(
@@ -271,11 +279,12 @@ class BaseAgent(ABC):
                         collected_content = ""
                         collected_tool_calls = []
 
-                        async for chunk in self._stream_with_tools(
+                        async for chunk in self._stream_with_tools_resilient(
                             invoker, messages, tool_schemas
                         ):
                             if hasattr(chunk, "content") and chunk.content:
                                 collected_content += chunk.content
+                                produced_any_content = True
                                 yield AgentChunk(
                                     type=AgentChunkType.CONTENT,
                                     data=chunk.content,
@@ -348,6 +357,25 @@ class BaseAgent(ABC):
                             # and service.py will create trace_steps from them
                         else:
                             # 无 Tool 调用，结束
+                            # 模型没有产出正文：刷新客户端重试一次；仍为空则给兜底提示，
+                            # 避免用户只看到空白回复（旧客户端可能绑定到已关闭的事件循环）。
+                            if not collected_content.strip():
+                                if not retried_empty_answer:
+                                    retried_empty_answer = True
+                                    logger.warning(
+                                        "Agent %s produced an empty answer, "
+                                        "refreshing LLM client and retrying",
+                                        self.name,
+                                    )
+                                    self._refresh_invoker(invoker)
+                                    continue
+                                collected_content = self.EMPTY_ANSWER_FALLBACK
+                                produced_any_content = True
+                                yield AgentChunk(
+                                    type=AgentChunkType.CONTENT,
+                                    data=collected_content,
+                                )
+
                             yield AgentChunk(
                                 type=AgentChunkType.TRACE,
                                 data=TraceStep(
@@ -382,6 +410,14 @@ class BaseAgent(ABC):
                     type=AgentChunkType.ERROR,
                     data={"error": str(e), "iteration": iteration},
                 )
+                # 出错且整轮对话还没有输出任何正文时给出兜底提示，
+                # 避免前端只显示错误、没有任何可读回复。
+                if not produced_any_content:
+                    produced_any_content = True
+                    yield AgentChunk(
+                        type=AgentChunkType.CONTENT,
+                        data=self.EMPTY_ANSWER_FALLBACK,
+                    )
                 break
 
     # ==================== 辅助方法 ====================
@@ -449,6 +485,44 @@ class BaseAgent(ABC):
         # 使用 LLMInvoker 的方法来确保 callbacks 被正确附加
         async for chunk in invoker.astream_with_tools(messages, tool_schemas):
             yield chunk
+
+    def _refresh_invoker(self, invoker: Any) -> None:
+        """重建 LLM 客户端（若调用器支持），用于失败后重试。"""
+        refresh = getattr(invoker, "refresh", None)
+        if callable(refresh):
+            refresh()
+
+    async def _stream_with_tools_resilient(
+        self,
+        invoker: LLMInvoker,
+        messages: list[dict],
+        tool_schemas: list[dict],
+    ) -> AsyncGenerator[Any, None]:
+        """带一次重试的流式工具调用。
+
+        若在产出任何内容之前就失败（典型场景：底层 httpx 客户端绑定到了
+        已关闭的事件循环，抛 RuntimeError: Event loop is closed），
+        则重建 LLM 客户端后重试一次；已产出内容时不再重试，避免重复输出。
+        """
+        for attempt in range(2):
+            produced = False
+            try:
+                async for chunk in self._stream_with_tools(
+                    invoker, messages, tool_schemas
+                ):
+                    produced = True
+                    yield chunk
+                return
+            except Exception:
+                if produced or attempt == 1:
+                    raise
+                logger.warning(
+                    "Agent %s LLM stream failed before producing output, "
+                    "refreshing client and retrying",
+                    self.name,
+                    exc_info=True,
+                )
+                self._refresh_invoker(invoker)
 
     def _extract_tool_calls(self, response: Any) -> list[ToolCallInfo]:
         """从 LLM 响应中提取 Tool 调用。"""

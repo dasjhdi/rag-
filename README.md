@@ -168,7 +168,7 @@ CookHero 面向厨房新手、健身/减脂/控糖人群、健康饮食倡导者
 3. **启动基础设施**
    ```bash
    cd deployments
-   docker-compose up -d
+   docker compose up -d
    ```
    这将启动：
    - PostgreSQL (端口 5432)
@@ -203,6 +203,45 @@ CookHero 面向厨房新手、健身/减脂/控糖人群、健康饮食倡导者
    - 饮食管理：http://localhost:5173/diet
    - 后端 API：http://localhost:8000
    - API 文档：http://localhost:8000/docs
+
+### 方法二：日常启动（本地开发）
+
+首次部署按「方法一」完成后，后续每次开机只需下面 4 步。基础设施跑在 Docker 里，
+后端与前端在宿主机上以开发模式运行（支持热重载）。
+
+1. **启动 Docker Desktop**，然后启动基础设施容器
+   ```bash
+   cd deployments
+   docker compose up -d
+   ```
+   容器设置了 `restart: always`，Docker Desktop 启动后会自动拉起；该命令是幂等的，重复执行无副作用。
+
+2. **启动后端**（必须在仓库根目录执行，`config.yml` 与 `data/` 都按相对路径解析）
+   ```bash
+   cd ..                          # 回到仓库根目录
+   source .venv/bin/activate      # Windows: .venv\Scripts\Activate.ps1
+   uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+   ```
+
+3. **启动前端**（另开一个终端窗口）
+   ```bash
+   cd frontend
+   npm run dev
+   ```
+
+4. **访问应用**：http://localhost:5173
+
+注意事项：
+
+- 离线开关 `HF_HUB_OFFLINE=1` 已写入仓库根目录的 `.env`，后端启动时自动加载，**无需再手动 export**。
+  嵌入模型（`BAAI/bge-small-zh-v1.5`）首次运行后已缓存到本地，该变量用于跳过 HuggingFace 的网络探测；
+  在网络受限的环境下若缺失，启动会长时间卡在重试上。仅在其它 shell 中单独跑脚本时才需要临时 `$env:HF_HUB_OFFLINE='1'`。
+- Windows PowerShell 若执行 `npm run dev` 报 `npm.ps1 ... 因为在此系统上禁止运行脚本`，
+  执行一次 `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force` 即可；
+  也可改用 `npm.cmd run dev`。
+- 后端与前端是两个常驻进程，各自占用一个终端窗口，`Ctrl+C` 停止。
+- 修改 `.env` 后必须**重启后端**才会生效（环境变量在进程启动时读取一次）。
+- 不要关闭 Docker Desktop，否则 PostgreSQL / Redis / Milvus 会随之中断。
 
 ---
 
@@ -400,7 +439,7 @@ python -m scripts.ingest_recipes
   因此无需重启后端即可检索到新语料。
 
 > **提示**：嵌入模型（`BAAI/bge-small-zh-v1.5`）首次使用会自动下载并缓存。
-> 缓存完成后，建议设置 `HF_HUB_OFFLINE=1` 再启动后端或灌库，
+> 离线开关 `HF_HUB_OFFLINE=1` 已写入 `.env`，后端与灌库脚本都会自动读取，无需手动设置；
 > 否则 HuggingFace 客户端会先做一次网络探测，在网络受限时可能长时间重试。
 
 参考规模：完整语料约 409 篇文档 / 1944 个 chunk。

@@ -147,6 +147,12 @@ class LLMProvider:
             llm_type=llm_type,
             base_llm=base_llm,
             callbacks=get_usage_callbacks(),
+            create_kwargs={
+                "streaming": streaming,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                **kwargs,
+            },
         )
 
 
@@ -179,11 +185,26 @@ class LLMInvoker:
         llm_type: LLMType | str | None,
         base_llm: ChatOpenAI,
         callbacks: List[BaseCallbackHandler] | None = None,
+        create_kwargs: Optional[dict[str, Any]] = None,
     ):
         self._provider = provider
         self._llm_type = llm_type
         self._base_llm = base_llm
         self._callbacks = callbacks or []
+        # 记录创建参数，refresh() 时用于重建底层客户端
+        self._create_kwargs: dict[str, Any] = dict(create_kwargs or {})
+
+    def refresh(self) -> None:
+        """重建底层 LLM 客户端，丢弃可能已失效的连接池。
+
+        httpx/openai 的异步客户端会把连接池绑定到创建它的事件循环上；
+        若该循环随后被关闭（例如后台线程中 asyncio.run 结束时），
+        继续复用旧客户端就会抛 RuntimeError: Event loop is closed。
+        在失败重试之前调用本方法即可拿到一个全新的客户端。
+        """
+        self._base_llm = self._provider.create_llm(
+            self._llm_type, **self._create_kwargs
+        )
 
     def _get_llm_with_model(self, tools: list[Any] | None = None) -> ChatOpenAI:
         """

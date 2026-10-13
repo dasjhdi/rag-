@@ -220,8 +220,19 @@ class AgentContextBuilder:
 
             # Add image content
             for img in context.images:
-                if img.get("url"):
-                    # Use imgbb URL
+                data = img.get("data")
+                mime_type = img.get("mime_type") or "image/jpeg"
+                if data:
+                    # 优先内联 base64：部分模型/中转服务会拒绝外部图片 URL
+                    # （传 imgbb 链接会被判为非法 URL，返回 400 invalid_parameter_error）
+                    content_parts.append(
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:{mime_type};base64,{data}"},
+                        }
+                    )
+                elif img.get("url"):
+                    # 没有 base64 数据时退化为 imgbb URL
                     content_parts.append(
                         {"type": "image_url", "image_url": {"url": img["url"]}}
                     )
