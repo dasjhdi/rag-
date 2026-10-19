@@ -52,6 +52,7 @@ from app.config.rag_config import (
 from app.config.web_search_config import WebSearchConfig, DeepResearchConfig
 from app.config.vision_config import VisionConfig, ImageGenerationConfig, ImageStorageConfig
 from app.config.mcp_config import MCPConfig, MCPServerConfig
+from app.config.constraint_config import ConstraintReasoningConfig
 
 __all__ = [
     # Main settings
@@ -88,4 +89,5 @@ __all__ = [
     "MCPServerConfig",
     "ImageGenerationConfig",
     "ImageStorageConfig",
+    "ConstraintReasoningConfig",
 ]

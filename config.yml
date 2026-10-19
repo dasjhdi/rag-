@@ -201,6 +201,15 @@ evaluation:
     faithfulness: 0.3
     answer_relevancy: 0.5
 
+# -----------------------------------------------------------------------------
+# 6b. Constraint Reasoning Configuration (方案 B)
+# -----------------------------------------------------------------------------
+# Deterministic parsing/filtering for allergens, diets and nutrition goals.
+constraint_reasoning:
+  enabled: true
+  strict_allergens: true
+  max_candidates: 20
+
 # =============================================================================
 # 7. Web Search Configuration (You.com)
 # =============================================================================

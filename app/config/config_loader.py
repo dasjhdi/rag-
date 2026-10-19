@@ -28,6 +28,7 @@ from app.config.web_search_config import WebSearchConfig, DeepResearchConfig
 from app.config.vision_config import VisionConfig, ImageGenerationConfig, ImageStorageConfig
 from app.config.evaluation_config import EvaluationConfig, AlertThresholds
 from app.config.mcp_config import MCPConfig, MCPServerConfig
+from app.config.constraint_config import ConstraintReasoningConfig
 
 
 # Load .env file into environment variables at module import
@@ -171,6 +172,7 @@ def load_rag_config(llm_config: Any | None = None) -> RAGConfig:
         "l2_enabled": cache_data.get("l2_enabled", True),
         "similarity_threshold": cache_data.get("similarity_threshold", 0.92),
         "vector_collection": cache_data.get("vector_collection", "cookhero_retrieval_cache"),
+        "corpus_version": cache_data.get("corpus_version"),
     }
 
     return RAGConfig.model_validate(rag_data)
@@ -276,6 +278,13 @@ def load_mcp_config() -> MCPConfig:
         mcp_data["amap"] = MCPServerConfig(**amap_data)
 
     return MCPConfig.model_validate(mcp_data)
+
+
+def load_constraint_config() -> ConstraintReasoningConfig:
+    """Load constraint reasoning configuration from YAML."""
+    config_data = _load_config_data()
+    constraint_data = dict(config_data.get("constraint_reasoning", {}) or {})
+    return ConstraintReasoningConfig.model_validate(constraint_data)
 
 
 def load_image_generation_config() -> ImageGenerationConfig:

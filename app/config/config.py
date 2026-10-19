@@ -20,6 +20,7 @@ from app.config.web_search_config import WebSearchConfig, DeepResearchConfig
 from app.config.vision_config import VisionConfig, ImageGenerationConfig, ImageStorageConfig
 from app.config.evaluation_config import EvaluationConfig
 from app.config.mcp_config import MCPConfig
+from app.config.constraint_config import ConstraintReasoningConfig
 from app.config.config_loader import (
     load_database_config,
     load_llm_config,
@@ -29,6 +30,7 @@ from app.config.config_loader import (
     load_vision_config,
     load_evaluation_config,
     load_mcp_config,
+    load_constraint_config,
     load_image_generation_config,
     load_image_storage_config,
 )
@@ -116,6 +118,9 @@ class Settings(BaseModel):
 
     # Image Storage configuration loaded from config.yml (imgbb)
     image_storage: ImageStorageConfig = load_image_storage_config()
+
+    # Constraint reasoning configuration loaded from config.yml
+    constraint_reasoning: ConstraintReasoningConfig = load_constraint_config()
 
     class Config:
         arbitrary_types_allowed = True
