@@ -26,6 +26,8 @@ from app.conversation import (
 from app.services.rag_service import rag_service_instance, RetrievalResult
 from app.services.user_service import user_service
 from app.services.evaluation_service import evaluation_service
+from app.reasoning.constraints import constraint_reasoner
+from app.reasoning.constraints.service import rebuild_retrieval_result
 from app.tools.web_search import (
     WebSearchDecision,
     web_search_tool,
@@ -126,6 +128,16 @@ class ConversationService:
                     yield event
                 return
 
+            # Dish/ingredient identification is answered from the structured
+            # vision result directly. This avoids a slow, failure-prone second
+            # LLM pass and prevents the main model from ignoring the image.
+            direct_answer = vision_agent.build_direct_answer(ctx.vision_result)
+            if direct_answer:
+                await self._save_user_message(ctx)
+                async for event in self._handle_direct_vision_answer(ctx, direct_answer):
+                    yield event
+                return
+
         # Save user message (with vision context if available)
         await self._save_user_message(ctx)
 
@@ -138,6 +150,38 @@ class ConversationService:
             ctx, f"📋 是否需要检索: {'是' if intent_result.need_rag else '否'}"
         )
         yield self._emit_thinking(ctx, f"💭 判断依据: {intent_result.reason}")
+
+        # Phase 2.5: Constraint reasoning (allergens, diets, nutrition goals)
+        try:
+            diet_profile = None
+            if ctx.user_id:
+                try:
+                    from app.diet.profile import diet_profile_service
+
+                    diet_profile = await diet_profile_service.get_profile(ctx.user_id)
+                except Exception as profile_exc:  # pragma: no cover - defensive
+                    logger.warning("Failed to load diet profile: %s", profile_exc)
+            ctx.constraint_decision = constraint_reasoner.analyze(
+                text=ctx.message,
+                slots=intent_result.slots,
+                profile=diet_profile,
+            )
+            ctx.constraint_context = (
+                getattr(ctx.constraint_decision, "prompt_block", "") or ""
+            )
+            if getattr(ctx.constraint_decision, "has_constraints", False):
+                yield self._emit_thinking(
+                    ctx,
+                    f"🧭 约束推理：硬约束 {ctx.constraint_decision.hard_count} 项，"
+                    f"软约束 {ctx.constraint_decision.soft_count} 项",
+                )
+            if getattr(ctx.constraint_decision, "needs_clarification", False):
+                yield self._emit_thinking(
+                    ctx,
+                    f"⚠️ {ctx.constraint_decision.clarification_question}",
+                )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Constraint analysis failed: %s", exc)
 
         logger.info(
             "chat route need_rag=%s intent=%s reason=%s history_len=%d images=%d",
@@ -471,6 +515,42 @@ class ConversationService:
 
         yield f"data: {json.dumps({'type': 'done', 'conversation_id': ctx.conv_id})}\n\n"
 
+    async def _handle_direct_vision_answer(
+        self, ctx: ChatContext, response: str
+    ) -> AsyncGenerator[str, None]:
+        """Return a deterministic answer built from the vision result."""
+        yield self._emit_thinking(ctx, "💬 已识别图片内容，直接整理识别结果...")
+
+        ctx.thinking_end_time = time.time()
+        ctx.answer_start_time = time.time()
+
+        yield f"data: {json.dumps({'type': 'text', 'content': response})}\n\n"
+
+        ctx.answer_end_time = time.time()
+
+        yield f"data: {json.dumps({'type': 'sources', 'data': []})}\n\n"
+
+        await conversation_repository.add_message(
+            conversation_id=ctx.conv_id,
+            role="assistant",
+            content=response,
+            sources=None,
+            intent=ctx.vision_result.intent.value if ctx.vision_result else None,
+            thinking=ctx.thinking_steps,
+            thinking_duration_ms=int(
+                (ctx.thinking_end_time - ctx.thinking_start_time) * 1000
+            )
+            if ctx.thinking_start_time and ctx.thinking_end_time
+            else None,
+            answer_duration_ms=int(
+                (ctx.answer_end_time - ctx.answer_start_time) * 1000
+            )
+            if ctx.answer_start_time and ctx.answer_end_time
+            else None,
+        )
+
+        yield f"data: {json.dumps({'type': 'done', 'conversation_id': ctx.conv_id})}\n\n"
+
     # =========================================================================
     # Phase 3: Web Search Processing
     # =========================================================================
@@ -488,12 +568,16 @@ class ConversationService:
         events = []
         events.append(self._emit_thinking(ctx, "🌐 正在判断是否需要 Web 搜索..."))
 
+        search_history = ctx.history_text
+        if ctx.vision_context:
+            search_history = f"{search_history}\n\n{ctx.vision_context}"
+
         decision = await web_search_tool.decide_search(
             query=ctx.message,
             document_summary=document_repository.get_metadata_options(
                 user_id=ctx.user_id
             ),
-            history_text=ctx.history_text,
+            history_text=search_history,
             user_id=ctx.user_id,
             conversation_id=ctx.conv_id,
         )
@@ -593,11 +677,23 @@ class ConversationService:
             # RAG retrieval
             yield self._emit_thinking(ctx, "🔎 正在从 CookHero 知识库中检索相关资料...")
 
+            retrieval_query = ctx.rewritten_query
+            if ctx.vision_result is not None:
+                vision_query = vision_agent.build_retrieval_query(
+                    ctx.vision_result, ctx.message
+                )
+                if vision_query:
+                    retrieval_query = vision_query
+                    yield self._emit_thinking(
+                        ctx, f"📷 使用图片识别结果检索: {retrieval_query}"
+                    )
+
             retrieval_result = await rag_service_instance.retrieve(
-                ctx.rewritten_query,
+                retrieval_query,
                 skip_rewrite=True,
                 user_id=ctx.user_id,
                 conversation_id=ctx.conv_id,
+                history_text=ctx.history_text,
             )
 
             # Process retrieval results (updates ctx.sources and ctx.rag_context)
@@ -621,6 +717,12 @@ class ConversationService:
         web_search_decision: Optional[WebSearchDecision],
     ) -> AsyncGenerator[str, None]:
         """Process RAG retrieval results and handle fallback web search."""
+        retrieval_result, constraint_message = self._apply_constraint_filter(
+            ctx, retrieval_result
+        )
+        if constraint_message:
+            yield self._emit_thinking(ctx, constraint_message)
+
         doc_count = len(retrieval_result.documents)
 
         # Convert RAG sources to unified format
@@ -681,6 +783,7 @@ class ConversationService:
             web_context=ctx.web_search_context,
             rewritten_query=ctx.rewritten_query,
             vision_context=ctx.vision_context,
+            constraint_context=ctx.constraint_context,
         )
 
         # Build LLM messages
@@ -761,12 +864,55 @@ class ConversationService:
         ctx.thinking_steps.append(step)
         return f"data: {json.dumps({'type': 'thinking', 'content': step})}\n\n"
 
+    def _apply_constraint_filter(
+        self,
+        ctx: ChatContext,
+        retrieval_result: RetrievalResult,
+    ) -> tuple[RetrievalResult, Optional[str]]:
+        """Apply hard/soft constraints to retrieved documents."""
+        decision = getattr(ctx, "constraint_decision", None)
+        if (
+            decision is None
+            or not getattr(decision, "enabled", False)
+            or not getattr(decision, "has_constraints", False)
+        ):
+            return retrieval_result, None
+
+        try:
+            decision = constraint_reasoner.evaluate_documents(
+                retrieval_result.documents, decision
+            )
+            ctx.constraint_decision = decision
+            ctx.constraint_context = getattr(decision, "prompt_block", "") or ""
+
+            filtered = rebuild_retrieval_result(
+                retrieval_result,
+                decision,
+                rag_service_instance._extract_sources,
+            )
+
+            if getattr(decision, "fallback_used", False) and filtered.documents:
+                return (
+                    filtered,
+                    "🧭 约束过滤：没有候选完全满足硬约束，已回退展示原候选",
+                )
+            if getattr(decision, "removed_ids", None):
+                return (
+                    filtered,
+                    f"🧭 约束过滤：已排除 {len(decision.removed_ids)} 个不符合约束的候选",
+                )
+            return filtered, None
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Constraint filtering failed: %s", exc)
+            return retrieval_result, None
+
     def _build_combined_context_prompt(
         self,
         rag_context: str,
         web_context: str,
         rewritten_query: str,
         vision_context: str = "",
+        constraint_context: str = "",
     ) -> str:
         """
         Build context prompt combining vision, RAG, and web search results.
@@ -784,6 +930,14 @@ class ConversationService:
 
         if rewritten_query.strip():
             parts.append(f"【重写后的检索语句】\n{rewritten_query}\n")
+
+        # Add constraint reasoning before RAG so hard constraints are prominent.
+        if constraint_context.strip():
+            parts.append(
+                "【饮食约束推理结果】\n"
+                "以下约束由确定性规则得出，请严格遵守并在回答中解释排除原因：\n"
+                f"{constraint_context.strip()}\n"
+            )
 
         # Add RAG context (local knowledge)
         if rag_context.strip():

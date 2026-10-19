@@ -7,7 +7,12 @@ This module provides a unified interface for all conversation-related functional
 including context management (re-exported from app.context for convenience).
 """
 
-from app.conversation.intent import IntentDetectionResult, IntentDetector, QueryIntent
+from app.conversation.intent import (
+    IntentDetectionResult,
+    IntentDetector,
+    QueryIntent,
+    QuerySlots,
+)
 from app.conversation.llm_orchestrator import LLMOrchestrator
 from app.conversation.query_rewriter import QueryRewriter
 from app.database.conversation_repository import conversation_repository
@@ -26,6 +31,7 @@ __all__ = [
     "IntentDetectionResult",
     "IntentDetector",
     "QueryIntent",
+    "QuerySlots",
     # LLM and query
     "LLMOrchestrator",
     "QueryRewriter",

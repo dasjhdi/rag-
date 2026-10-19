@@ -7,7 +7,8 @@ Context structure:
 1. System Message - The base system prompt
 2. Compressed Summary - Summary of already compressed messages (if exists)
 3. Uncompressed Messages - Original messages that haven't been compressed yet (history[compressed_count:])
-4. Extra System Prompt - Additional context (e.g., RAG retrieved content)
+4. Extra System Prompt - Additional context (e.g., RAG retrieved content),
+   inserted right before the current user turn
 
 Key invariant:
 - Every historical message is either:
@@ -70,7 +71,8 @@ class ContextManager:
         2. System Message (base prompt)
         3. System Message with compressed summary (if exists)
         4. Uncompressed Messages (history[compressed_count:])
-        5. Extra system prompt (e.g., RAG context) - appended at end
+        5. Extra system prompt (e.g., RAG context) - inserted right before
+           the current user turn
         
         Args:
             history: Full conversation history as list of dicts with 'role' and 'content'
@@ -110,9 +112,21 @@ class ContextManager:
             else:
                 result.append(AIMessage(content=content))
         
-        # Add extra system prompt (e.g., RAG context) at the end
+        # Add extra context (e.g., RAG retrieval results) as a system message.
+        #
+        # This must NOT be appended as an assistant turn at the very end of the
+        # list: doing so leaves the conversation ending on an assistant message, so
+        # the model treats the retrieved context as a reply it already produced and
+        # merely continues it. In practice that yields empty answers or completely
+        # off-topic output. Inserting the context just before the current user turn
+        # keeps the list ending on the question while still supplying the material.
         if extra_prompt:
-            result.append(AIMessage(content=extra_prompt))
+            insert_at = len(result)
+            if result and isinstance(result[-1], HumanMessage):
+                # Anchor the context to the current user turn: the list must keep
+                # ending on the question, never on a synthetic turn of our own.
+                insert_at = len(result) - 1
+            result.insert(insert_at, SystemMessage(content=extra_prompt))
         
         return result
 

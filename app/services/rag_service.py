@@ -22,11 +22,14 @@ from app.database.document_repository import document_repository
 from app.rag.embeddings.embedding_factory import get_embedding_model
 from app.rag.vector_stores.vector_store_factory import get_vector_store
 from app.rag.pipeline.document_processor import document_processor
-from app.rag.pipeline.retrieval import RetrievalOptimizationModule
+from app.rag.pipeline.query_planner import QueryPlanner
+from app.rag.pipeline.retrieval import RetrievalOptimizationModule, merge_documents
 from app.rag.pipeline.generation import GenerationIntegrationModule
 from app.rag.pipeline.metadata_filter import MetadataFilterExtractor
 from app.rag.rerankers.base import BaseReranker
-from app.rag.cache import CacheManager
+from app.rag.rerankers.lexical_reranker import FaultTolerantReranker, LexicalReranker
+from app.rag.cache import CacheManager, build_cache_scope
+from app.observability import semantic_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +71,7 @@ class RAGService:
 
         self.retrieval_modules: Dict[str, RetrievalOptimizationModule] = {}
         self.reranker: BaseReranker | None = None
+        self.query_planner: QueryPlanner | None = None
 
         # Initialize vector store connections (no local file loading)
         self._init_vector_stores()
@@ -77,14 +81,30 @@ class RAGService:
         self.metadata_filter_extractor = MetadataFilterExtractor(llm_type="fast")
 
         if self.config.reranker.enabled:
+            primary: BaseReranker | None = None
             if self.config.reranker.type == "siliconflow":
                 from app.rag.rerankers.siliconflow_reranker import SiliconFlowReranker
 
-                self.reranker = SiliconFlowReranker(self.config.reranker)
+                primary = SiliconFlowReranker(self.config.reranker)
             else:
                 logger.warning(
                     f"Reranker type '{self.config.reranker.type}' not recognized. Reranking disabled."
                 )
+            # A remote reranker may fail; lexical reranking is deterministic and local.
+            fallback: BaseReranker = LexicalReranker()
+            if getattr(self.config.reranker, "local_cross_encoder_enabled", False):
+                from app.rag.rerankers.cross_encoder_reranker import (
+                    LocalCrossEncoderReranker,
+                    build_sentence_transformer_scorer,
+                )
+
+                scorer = build_sentence_transformer_scorer(
+                    getattr(self.config.reranker, "local_cross_encoder_model", None)
+                )
+                fallback = LocalCrossEncoderReranker(
+                    scorer, fallback=LexicalReranker()
+                )
+            self.reranker = FaultTolerantReranker(primary, fallback)
 
         # Initialize cache manager if enabled
         self.cache_manager: CacheManager | None = None
@@ -156,6 +176,7 @@ class RAGService:
         skip_rewrite: bool = False,
         user_id: str | None = None,
         conversation_id: str | None = None,
+        history_text: str = "",
     ) -> RetrievalResult:
         """Perform query rewriting and retrieval only, without LLM generation."""
         if not self.retrieval_modules:
@@ -180,9 +201,20 @@ class RAGService:
             )
         )
 
+        # Optional multi-query decomposition. The original query is always first.
+        queries = [rewritten_query]
+        if self.config.retrieval.multi_query_enabled and rewritten_query.strip():
+            planner = self._get_query_planner()
+            queries = await planner.decompose(
+                rewritten_query,
+                history_text=history_text,
+                user_id=user_id,
+                conversation_id=conversation_id,
+            )
+
         # Execute retrieval across all sources
         all_retrieved_docs = await self._execute_retrieval(
-            rewritten_query,
+            queries,
             self.config.retrieval.top_k,
             use_intelligent_ranker,
             metadata_expression,
@@ -219,28 +251,41 @@ class RAGService:
 
     async def _execute_retrieval(
         self,
-        rewritten_query: str,
+        rewritten_query: str | List[str],
         top_k: int,
         use_intelligent_ranker: bool,
         metadata_expression: Optional[str],
         user_id: Optional[str] = None,
     ) -> List[Document]:
         """Execute retrieval across all configured sources."""
+        if isinstance(rewritten_query, str):
+            queries = [rewritten_query]
+        else:
+            queries = [query for query in rewritten_query if query and query.strip()]
+        if not queries:
+            return []
+
         all_docs: List[Document] = []
 
         for source_name, module in self.retrieval_modules.items():
-            docs = await self._retrieve_from_source(
-                source_name=source_name,
-                retrieval_module=module,
-                rewritten_query=rewritten_query,
-                top_k=top_k,
-                use_intelligent_ranker=use_intelligent_ranker,
-                metadata_expression=metadata_expression,
-                user_id=user_id,
-            )
-            all_docs.extend(docs)
+            source_docs: List[Document] = []
+            for query in queries:
+                docs = await self._retrieve_from_source(
+                    source_name=source_name,
+                    retrieval_module=module,
+                    rewritten_query=query,
+                    top_k=top_k,
+                    use_intelligent_ranker=use_intelligent_ranker,
+                    metadata_expression=metadata_expression,
+                    user_id=user_id,
+                )
+                source_docs.extend(docs)
 
-            self._log_retrieval_summary(f"source={source_name}", docs)
+            # Merge multi-query hits per source and keep the per-source top_k cap.
+            merged_docs = merge_documents(source_docs)[:top_k]
+            all_docs.extend(merged_docs)
+
+            self._log_retrieval_summary(f"source={source_name}", merged_docs)
 
         logger.info("aggregated retrieved docs=%d", len(all_docs))
         return all_docs
@@ -258,12 +303,14 @@ class RAGService:
         """Retrieve documents from a single source with caching."""
         logger.info("retrieving source=%s", source_name)
 
+        scope = self._cache_scope(source_name, user_id)
+
         # Check cache
         if self.cache_manager:
             cached_docs = await self.cache_manager.get(
                 source_name,
                 rewritten_query,
-                user_id if source_name == "personal" else None,
+                scope,
             )
             if cached_docs:
                 logger.info(
@@ -275,6 +322,9 @@ class RAGService:
                     if "retrieval_score" not in doc.metadata:
                         doc.metadata["retrieval_score"] = 1.0
                     doc.metadata["data_source"] = source_name
+                self._record_retrieval_metrics(
+                    source_name, len(cached_docs), cache_hit=True
+                )
                 return cached_docs
 
         # Determine ranker configuration
@@ -297,6 +347,12 @@ class RAGService:
         except Exception as exc:
             logger.error(
                 "Error during retrieval from source '%s': %s", source_name, exc
+            )
+            self._record_retrieval_metrics(
+                source_name,
+                0,
+                cache_hit=False,
+                cache_checked=self.cache_manager is not None,
             )
             return []
 
@@ -336,10 +392,51 @@ class RAGService:
                 source_name,
                 rewritten_query,
                 final_docs,
-                user_id if source_name == "personal" else None,
+                scope,
             )
 
+        self._record_retrieval_metrics(
+            source_name,
+            len(final_docs),
+            cache_hit=False,
+            cache_checked=self.cache_manager is not None,
+        )
         return final_docs
+
+    def _get_query_planner(self) -> QueryPlanner:
+        """Lazily create the query planner so the default path has no extra cost."""
+        if self.query_planner is None:
+            self.query_planner = QueryPlanner(
+                max_queries=self.config.retrieval.max_queries
+            )
+        return self.query_planner
+
+    def _cache_scope(self, source_name: str, user_id: Optional[str]) -> str:
+        """Build a cache scope that isolates users, corpora and embeddings."""
+        return build_cache_scope(
+            user_id if source_name == "personal" else None,
+            corpus_version=self.config.cache.corpus_version,
+            embedding_model=self.config.embedding.model_name,
+        )
+
+    @staticmethod
+    def _record_retrieval_metrics(
+        source_name: str,
+        doc_count: int,
+        *,
+        cache_hit: bool,
+        cache_checked: bool = True,
+    ) -> None:
+        """Record retrieval metrics without affecting the retrieval result."""
+        try:
+            semantic_metrics.record_retrieval(
+                source=source_name,
+                doc_count=doc_count,
+                cache_hit=cache_hit,
+                cache_checked=cache_checked,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Failed to record retrieval metrics: %s", exc)
 
     @staticmethod
     def _build_filter_expr(
@@ -452,8 +549,21 @@ class RAGService:
     async def _rerank_if_needed(self, rewritten_query: str, docs_for_rerank):
         if self.reranker and self.config.reranker.enabled:
             logger.info("reranking docs=%d", len(docs_for_rerank))
-            return await self.reranker.rerank(rewritten_query, docs_for_rerank)
+            before = getattr(self.reranker, "fallback_used", 0)
+            try:
+                return await self.reranker.rerank(rewritten_query, docs_for_rerank)
+            finally:
+                after = getattr(self.reranker, "fallback_used", before)
+                self._record_rerank_metrics(fallback_used=after > before)
         return docs_for_rerank
+
+    @staticmethod
+    def _record_rerank_metrics(*, fallback_used: bool) -> None:
+        """Record rerank metrics without affecting the rerank result."""
+        try:
+            semantic_metrics.record_rerank(fallback_used=fallback_used)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Failed to record rerank metrics: %s", exc)
 
     def _log_retrieval_summary(self, stage: str, docs: List[Document]) -> None:
         """Log a summary of retrieved documents."""

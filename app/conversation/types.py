@@ -94,6 +94,10 @@ class ChatContext:
     rag_context: str = ""
     rewritten_query: str = ""
 
+    # Constraint reasoning (SU-17)
+    constraint_context: str = ""
+    constraint_decision: Optional[Any] = None
+
     # Vision/Multimodal context
     images: Optional[List[Dict[str, str]]] = (
         None  # List of {"data": base64, "mime_type": ...}

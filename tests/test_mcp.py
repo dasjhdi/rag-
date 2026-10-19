@@ -86,7 +86,7 @@ async def test_mcp_registry():
     from app.config import settings
     from app.agent import setup_agent_module
     from app.agent.registry import AgentHub  # noqa: F401
-    from app.agent.tools.mcp.setup import register_amap_mcp  # noqa: F401
+    from app.agent.tools.mcp.setup import register_mcp_servers
 
     print("\n" + "=" * 60)
     print("Testing MCP Registry")
@@ -101,7 +101,7 @@ async def test_mcp_registry():
 
     # Register amap MCP
     print("\n--- Registering Amap MCP ---")
-    await register_amap_mcp()
+    await register_mcp_servers()
 
     # List registered servers
     print("\n--- Registered MCP servers ---")
@@ -132,7 +132,7 @@ async def test_mcp_registry():
 
 async def test_tool_execution():
     """Test executing an MCP tool through the registry."""
-    from app.agent.tools.mcp.setup import register_amap_mcp  # noqa: F401
+    from app.agent.tools.mcp.setup import register_mcp_servers
     from app.agent import setup_agent_module
     from app.agent.registry import AgentHub  # noqa: F401
 
@@ -145,7 +145,7 @@ async def test_tool_execution():
     setup_agent_module()
 
     print("--- Registering MCP tools ---")
-    await register_amap_mcp()
+    await register_mcp_servers()
 
     # Try to find and execute the weather tool
     print("\n--- Looking for weather tool ---")

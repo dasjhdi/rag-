@@ -10,15 +10,71 @@ This agent:
 
 import json
 import logging
+import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from app.config import settings
+from app.knowledge.ontology import canonicalize_ingredients
 from app.vision.provider import VisionProvider, ImageInput, vision_provider
 from app.utils.structured_json import extract_first_valid_json
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_text_value(value: Any) -> str:
+    """Collapse arbitrary model output into a single display string."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return " ".join(value.split())
+    if isinstance(value, (list, tuple, set)):
+        items = [_normalize_text_value(item) for item in value]
+        return "、".join(dict.fromkeys(item for item in items if item))
+    return " ".join(str(value).split())
+
+
+def _normalize_dish_name(value: Any) -> str:
+    """Return one dish name; models sometimes return a list of candidates."""
+    if isinstance(value, (list, tuple, set)):
+        names = [_normalize_text_value(item) for item in value]
+        return " / ".join(dict.fromkeys(name for name in names if name))
+    return _normalize_text_value(value)
+
+
+def _normalize_ingredients(value: Any) -> List[str]:
+    """Normalize ingredients into a deduplicated list of non-empty names."""
+    if isinstance(value, str):
+        value = re.split(r"[,，、;；/|]+", value)
+    elif not isinstance(value, (list, tuple, set)):
+        return []
+
+    result: List[str] = []
+    for item in value:
+        name = _normalize_text_value(item)
+        if name and name not in result:
+            result.append(name)
+    return result
+
+
+def _normalize_extracted_info(value: Any) -> dict:
+    """Give every downstream consumer stable field types."""
+    if not isinstance(value, dict):
+        return {}
+    return {
+        "dish_name": _normalize_dish_name(value.get("dish_name")),
+        "ingredients": _normalize_ingredients(value.get("ingredients")),
+        "cooking_stage": _normalize_text_value(value.get("cooking_stage")),
+        "other": _normalize_text_value(value.get("other")),
+    }
+
+
+def _coerce_confidence(value: Any, default: float = 0.5) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
 
 class VisionIntent(str, Enum):
@@ -117,6 +173,8 @@ VISION_ANALYSIS_PROMPT = """你是 CookHero 的视觉理解模块，专门用于
     "confidence": 0.0-1.0之间的置信度
 }}
 
+如果图片与食物相关，必须给出最可能的 dish_name 和图片中可见的 ingredients，不要留空；
+无法确定具体菜名时给出候选菜名，并降低 confidence。ingredients 只列图片中可见或高度可能的食材，使用常见中文名称。
 如果无法识别或不确定，也必须按此格式输出，给出最佳猜测并将简要描述写入 description。
 """
 
@@ -128,6 +186,8 @@ class VisionAgent:
     This agent processes image inputs and classifies them based on
     whether they are food/cooking related, then extracts relevant information.
     """
+
+    MAX_RETRIEVAL_QUERY_LENGTH = 80
 
     def __init__(self, provider: Optional[VisionProvider] = None):
         """
@@ -250,11 +310,11 @@ class VisionAgent:
                 is_food_related=is_food_related,
                 intent=intent,
                 description=data.get("description", ""),
-                extracted_info=data.get("extracted_info", {}),
+                extracted_info=_normalize_extracted_info(data.get("extracted_info")),
                 direct_response=data.get("direct_response")
                 if not is_food_related
                 else None,
-                confidence=float(data.get("confidence", 0.5)),
+                confidence=_coerce_confidence(data.get("confidence")),
                 raw_response=raw_response,
             )
 
@@ -306,21 +366,20 @@ class VisionAgent:
             parts.append(f"【图片内容】{result.description}")
 
         # Add extracted information
-        info = result.extracted_info
+        info = result.extracted_info if isinstance(result.extracted_info, dict) else {}
         if info:
-            if info.get("dish_name"):
-                parts.append(f"【识别菜品】{info['dish_name']}")
-            if info.get("ingredients"):
-                ingredients = (
-                    ", ".join(info["ingredients"])
-                    if isinstance(info["ingredients"], list)
-                    else info["ingredients"]
-                )
-                parts.append(f"【识别食材】{ingredients}")
-            if info.get("cooking_stage"):
-                parts.append(f"【烹饪阶段】{info['cooking_stage']}")
-            if info.get("other"):
-                parts.append(f"【其他信息】{info['other']}")
+            dish_name = _normalize_dish_name(info.get("dish_name"))
+            ingredients = _normalize_ingredients(info.get("ingredients"))
+            cooking_stage = _normalize_text_value(info.get("cooking_stage"))
+            other = _normalize_text_value(info.get("other"))
+            if dish_name:
+                parts.append(f"【识别菜品】{dish_name}")
+            if ingredients:
+                parts.append(f"【识别食材】{', '.join(ingredients)}")
+            if cooking_stage:
+                parts.append(f"【烹饪阶段】{cooking_stage}")
+            if other:
+                parts.append(f"【其他信息】{other}")
 
         # Add intent context
         intent_map = {
@@ -334,6 +393,77 @@ class VisionAgent:
             parts.append(f"【用户意图】{intent_map[result.intent]}")
 
         return "\n".join(parts)
+
+    def build_direct_answer(
+        self, result: Optional[VisionAnalysisResult]
+    ) -> Optional[str]:
+        """Build a deterministic answer for image identification intents.
+
+        Dish and ingredient identification should not depend on a second LLM
+        call or on recipe retrieval. The vision model already produced the
+        structured result; returning it directly is both more reliable and much
+        faster. Recipe requests and open-ended food questions still continue
+        through the normal conversation/RAG flow.
+        """
+        if result is None or not result.is_food_related:
+            return None
+        if result.intent not in (
+            VisionIntent.DISH_IDENTIFICATION,
+            VisionIntent.INGREDIENT_IDENTIFICATION,
+        ):
+            return None
+
+        info = result.extracted_info if isinstance(result.extracted_info, dict) else {}
+
+        dish = _normalize_dish_name(info.get("dish_name"))
+        ingredients = _normalize_ingredients(info.get("ingredients"))
+
+        if not dish and not ingredients:
+            return None
+
+        parts: List[str] = []
+        if result.confidence < 0.6:
+            parts.append("识别置信度较低，以下是最可能的判断：")
+        if dish:
+            parts.append(f"识别结果：这道菜看起来是 **{dish}**。")
+        else:
+            parts.append("识别结果：图片中的菜品暂未确定具体名称。")
+        if ingredients:
+            parts.append(f"可见的主要原料：{'、'.join(ingredients)}。")
+        if result.description:
+            parts.append(f"图片描述：{result.description.strip()}")
+        parts.append("以上为基于图片的识别结果，实际用料可能因做法不同而略有差异。")
+        return "\n\n".join(parts)
+
+    def build_retrieval_query(
+        self, result: VisionAnalysisResult, user_query: str = ""
+    ) -> Optional[str]:
+        """
+        Turn structured vision output into a compact retrieval query.
+
+        Dish names and normalized ingredients are used because they are the
+        signals the recipe index can match. When the image yields neither, the
+        caller should fall back to the text query.
+        """
+        if result is None or not result.is_food_related:
+            return None
+
+        info = result.extracted_info if isinstance(result.extracted_info, dict) else {}
+
+        dish = _normalize_dish_name(info.get("dish_name"))
+        ingredients = canonicalize_ingredients(_normalize_ingredients(info.get("ingredients")))
+
+        parts = [part for part in [dish, *ingredients] if part]
+        if not parts:
+            return None
+
+        # Deduplicate while preserving order, then enforce a single line.
+        query = " ".join(dict.fromkeys(parts))
+        query = " ".join(query.split())
+        if len(query) > self.MAX_RETRIEVAL_QUERY_LENGTH:
+            query = query[: self.MAX_RETRIEVAL_QUERY_LENGTH].rstrip()
+
+        return query or None
 
 
 # Global instance

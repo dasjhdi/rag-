@@ -161,21 +161,38 @@ class VisionProvider:
             f"model={self.config.model_names[0]}"
         )
 
-        try:
-            # Use llm_context for usage tracking
-            with llm_context(self.MODULE_NAME, user_id, conversation_id):
-                response = await self._invoker.ainvoke(
-                    messages,
-                    response_format={
-                        "type": "json_object"
-                    },  # Best effort; ignored if unsupported
-                )
-            result = str(response.content)
-            logger.debug(f"Vision response: {result[:200]}...")
-            return result
-        except Exception as e:
-            logger.error(f"Vision analysis failed: {e}", exc_info=True)
-            raise
+        models = list(self.config.model_names) or [None]
+        last_error: Optional[Exception] = None
+
+        for index, model in enumerate(models):
+            try:
+                # Use llm_context for usage tracking
+                with llm_context(self.MODULE_NAME, user_id, conversation_id):
+                    response = await self._invoker.ainvoke(
+                        messages,
+                        model=model,
+                        response_format={
+                            "type": "json_object"
+                        },  # Best effort; ignored if unsupported
+                    )
+                result = str(response.content)
+                logger.debug(f"Vision response: {result[:200]}...")
+                return result
+            except Exception as e:
+                last_error = e
+                if index < len(models) - 1:
+                    logger.warning(
+                        "Vision model %s failed (%s); trying fallback %s",
+                        model,
+                        e,
+                        models[index + 1],
+                    )
+                    continue
+                logger.error(f"Vision analysis failed: {e}", exc_info=True)
+                raise
+
+        assert last_error is not None
+        raise last_error
 
     def validate_image(
         self, mime_type: str, size_bytes: int

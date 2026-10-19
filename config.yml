@@ -58,13 +58,16 @@ llm:
   # Vision tier - 多模态模型（图片识别 / 食材与菜品识别）
   # 该配置由 app/vision/provider.py 使用（LLMConfig.vision）。
   vision:
+    # 主模型优先；失败时按顺序回退（VisionProvider 会逐个尝试）。
+    # 注意：omni 系列免费额度已耗尽（403 AccessDenied.Unpurchased），
+    # 这里选用同网关下已验证可用的 qwen3.7-flash / qwen3.8-flash。
     model_names:
-      - "qwen3.8-omni-flash"
       - "qwen3.7-flash"
+      - "qwen3.8-flash"
     base_url: "https://maas.qianwenaiapi.com/compatible-mode/v1"
     # api_key: Loaded from .env (VISION_API_KEY or LLM_API_KEY)
-    temperature: 0.7
-    max_tokens: 4096
+    temperature: 0.2
+    max_tokens: 1024
 
 # =============================================================================
 # 2. Embedding Model Configuration
@@ -174,11 +177,11 @@ vision:
     # Enable/disable vision features
     enabled: true
     # Model configuration (OpenAI-compatible API)
-    model_name: "qwen3.8-omni-flash"
+    model_name: "qwen3.7-flash"
     base_url: "https://maas.qianwenaiapi.com/compatible-mode/v1"
     # api_key: Loaded from .env (VISION_API_KEY or LLM_API_KEY)
-    temperature: 0.7
-    max_tokens: 4096
+    temperature: 0.2
+    max_tokens: 1024
     # Image processing settings
     max_image_size_mb: 10.0
     # Maximum request timeout in seconds
