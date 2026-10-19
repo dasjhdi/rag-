@@ -7,7 +7,7 @@ Provides RESTful API for diet plans, meals, logs, and analysis.
 
 import base64
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request, Query
@@ -15,6 +15,9 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.diet.service import diet_service
 from app.diet.database.models import MealType, DayOfWeek, DataSource
+from app.diet.execution.service import execution_service
+from app.diet.planning.service import plan_service
+from app.diet.profile.service import diet_profile_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -30,12 +33,17 @@ class DishSchema(BaseModel):
     """Schema for a dish in a meal."""
 
     name: str = Field(..., description="菜品名称")
+    recipe_id: Optional[str] = Field(None, description="菜谱ID")
+    servings: Optional[float] = Field(None, description="份量")
+    ingredients: Optional[List[Dict[str, Any]]] = Field(None, description="结构化食材")
     weight_g: Optional[float] = Field(None, description="重量(克)")
     unit: Optional[str] = Field(None, description="单位（份/个/碗等）")
-    calories: Optional[int] = Field(None, description="卡路里")
+    calories: Optional[float] = Field(None, description="卡路里")
     protein: Optional[float] = Field(None, description="蛋白质(克)")
     fat: Optional[float] = Field(None, description="脂肪(克)")
     carbs: Optional[float] = Field(None, description="碳水化合物(克)")
+    nutrition_confidence: Optional[str] = Field(None, description="营养置信度")
+    total_minutes: Optional[float] = Field(None, description="预计耗时(分钟)")
 
 
 class AddMealRequest(BaseModel):
@@ -154,7 +162,9 @@ class MarkMealEatenRequest(BaseModel):
 class UpdatePreferenceRequest(BaseModel):
     """Request for updating user preferences."""
 
+    allergy_severity: Optional[Dict[str, str]] = Field(None, description="过敏严重程度")
     dietary_restrictions: Optional[List[str]] = Field(None, description="饮食限制")
+    health_conditions: Optional[List[str]] = Field(None, description="健康状况")
     allergies: Optional[List[str]] = Field(None, description="过敏原")
     favorite_cuisines: Optional[List[str]] = Field(None, description="喜爱的菜系")
     avoided_foods: Optional[List[str]] = Field(None, description="不喜欢的食物")
@@ -164,9 +174,33 @@ class UpdatePreferenceRequest(BaseModel):
     protein_goal: Optional[float] = Field(None, description="每日蛋白质目标(克)")
     fat_goal: Optional[float] = Field(None, description="每日脂肪目标(克)")
     carbs_goal: Optional[float] = Field(None, description="每日碳水目标(克)")
+    fiber_goal: Optional[float] = Field(None, description="每日膳食纤维目标(克)")
+    sodium_goal: Optional[float] = Field(None, description="每日钠目标(毫克)")
+    meals_per_day: Optional[int] = Field(None, ge=1, le=6, description="每日餐数")
+    cooking_skill: Optional[str] = Field(None, description="烹饪水平")
+    max_cook_minutes: Optional[int] = Field(None, ge=1, le=600, description="单餐最长烹饪时间")
+    budget_level: Optional[str] = Field(None, description="预算等级")
+    household_size: Optional[int] = Field(None, ge=1, le=20, description="家庭人数")
+    unit_system: Optional[str] = Field(None, description="单位制 metric/imperial")
+    spice_level: Optional[str] = Field(None, description="辣度")
+
+
+class GeneratePlanRequest(BaseModel):
+    """Request for generating a weekly plan."""
+
+    week_start_date: Optional[date] = Field(None, description="周开始日期（默认本周一）")
+    include_family: bool = Field(False, description="是否合并家庭约束")
 
 
 # ==================== Helper Functions ====================
+
+
+def build_profile_update(payload: "UpdatePreferenceRequest") -> Dict[str, Any]:
+    """Normalize legacy preference fields into the structured profile payload."""
+    data = payload.model_dump(exclude_unset=True)
+    if "disliked_foods" in data:
+        data.setdefault("avoided_foods", data.pop("disliked_foods"))
+    return data
 
 
 def get_user_id(request: Request) -> str:
@@ -197,6 +231,100 @@ async def get_plan_by_week(
         return {"plan": None}
 
     return {"plan": plan}
+
+
+def _default_week_start(target: Optional[date] = None) -> date:
+    current = target or date.today()
+    return current - timedelta(days=current.weekday())
+
+
+@router.post("/diet/plans/generate")
+async def generate_plan(
+    payload: GeneratePlanRequest, request: Request
+) -> Dict[str, Any]:
+    """Generate a seven-day plan from the structured profile and recipe pool."""
+    user_id = get_user_id(request)
+    week_start = payload.week_start_date or _default_week_start()
+    result = await plan_service.generate(
+        user_id, week_start, include_family=payload.include_family
+    )
+    if not result.get("plan"):
+        raise HTTPException(status_code=422, detail=result.get("diagnostics") or {})
+    return result
+
+
+@router.post("/diet/plans/meals/{meal_id}/replace")
+async def replace_plan_meal(meal_id: str, request: Request) -> Dict[str, Any]:
+    """Replace one planned meal without touching other meals."""
+    user_id = get_user_id(request)
+    meal = await plan_service.replace_meal(user_id, meal_id)
+    if not meal:
+        raise HTTPException(
+            status_code=409,
+            detail="餐次不存在、已锁定或已完成，无法替换",
+        )
+    return meal
+
+
+@router.post("/diet/plans/meals/{meal_id}/skip")
+async def skip_plan_meal(meal_id: str, request: Request) -> Dict[str, Any]:
+    """Mark one planned meal as skipped."""
+    user_id = get_user_id(request)
+    meal = await plan_service.set_status(user_id, meal_id, "skipped")
+    if not meal:
+        raise HTTPException(status_code=404, detail="餐次不存在或无权访问")
+    return meal
+
+
+@router.get("/diet/today")
+async def get_today_view(
+    request: Request,
+    target_date: Optional[date] = Query(None, description="目标日期（默认今天）"),
+) -> Dict[str, Any]:
+    """Return today's planned meals, effective status and the next meal."""
+    user_id = get_user_id(request)
+    return await execution_service.today(user_id, target_date)
+
+
+@router.get("/diet/analysis/adherence")
+async def get_adherence(
+    request: Request,
+    week_start_date: Optional[date] = Query(None, description="周开始日期（默认本周）"),
+) -> Dict[str, Any]:
+    """Return weekly execution rate, missed meals and review suggestions."""
+    user_id = get_user_id(request)
+    return await execution_service.adherence(user_id, week_start_date)
+
+
+# ==================== Profile Endpoints ====================
+
+
+@router.get("/diet/profile")
+async def get_diet_profile(request: Request) -> Dict[str, Any]:
+    """Return the structured dietary profile."""
+    user_id = get_user_id(request)
+    return await diet_profile_service.get_profile(user_id)
+
+
+@router.put("/diet/profile")
+async def update_diet_profile(
+    payload: UpdatePreferenceRequest, request: Request
+) -> Dict[str, Any]:
+    """Update the structured dietary profile."""
+    user_id = get_user_id(request)
+    return await diet_profile_service.update_profile(
+        user_id, **build_profile_update(payload)
+    )
+
+
+@router.get("/diet/profile/effective-constraints")
+async def get_effective_constraints(request: Request) -> Dict[str, Any]:
+    """Return parser-ready constraints derived from the profile."""
+    user_id = get_user_id(request)
+    return {
+        "constraints": await diet_profile_service.effective_constraints(user_id),
+        "targets": await diet_profile_service.plan_targets(user_id),
+    }
 
 
 # ==================== Meal Endpoints ====================

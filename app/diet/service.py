@@ -233,6 +233,12 @@ class DietService:
                 "source": DataSource.MANUAL.value,
             }
         ]
+        try:
+            from app.diet.nutrition.service import enrich_food_item
+
+            normalized_items = [enrich_food_item(item) for item in normalized_items]
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Nutrition enrichment skipped: %s", exc)
         created_items = await self.repository.create_log_items(
             user_id=user_id,
             log_date=log_date,
@@ -507,6 +513,14 @@ class DietService:
         if not items or items[0].user_id != user_id:
             return None
 
+        try:
+            from app.diet.nutrition.service import enrich_food_item
+
+            kwargs = enrich_food_item({"food_name": food_name, **kwargs})
+            kwargs.pop("food_name", None)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Nutrition enrichment skipped: %s", exc)
+
         item = await self.repository.add_item_to_log(
             log_id=log_id,
             food_name=food_name,
@@ -518,7 +532,17 @@ class DietService:
 
     async def get_daily_summary(self, user_id: str, target_date: date) -> dict:
         """获取某天的饮食摘要"""
-        return await self.repository.get_daily_summary(user_id, target_date)
+        summary = await self.repository.get_daily_summary(user_id, target_date)
+        try:
+            from app.diet.nutrition.service import nutrition_coverage
+
+            items = await self.repository.get_log_items_by_date(user_id, target_date)
+            summary["nutrition_coverage"] = nutrition_coverage(
+                [item.to_dict() for item in items]
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Nutrition coverage calculation failed: %s", exc)
+        return summary
 
     async def get_weekly_summary(
         self, user_id: str, week_start_date: Optional[date] = None
