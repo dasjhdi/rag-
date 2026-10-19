@@ -21,6 +21,9 @@ dist/
 # Local data and indexes
 /data/documents/
 /data/HowToCook/
+/data/media_cache/
+/data/imports/
+/data/recipe_images/
 /vector_index/
 /deployments/volumes/
 /cookhero.db
@@ -40,3 +43,8 @@ blog/
 
 # Local dev run artifacts (stdout/stderr of dev servers)
 .run/
+# WorkBuddy agent metadata & memory (local only)
+.workbuddy/
+
+# Build / generation outputs
+/outputs/
