@@ -339,10 +339,10 @@ export function AgentMessageBubble({ message, hasError = false }: AgentMessageBu
         {/* Message Text (hide while only thinking) */}
         {!isThinkingPhase && (
           <div
-            className={`text-sm leading-relaxed break-words ${
+            className={`text-[15px] leading-relaxed break-words ${
               isUser
-                ? 'bg-gradient-to-br from-blue-500 to-blue-500 text-white px-4 py-1 rounded-2xl shadow-sm'
-                : 'prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-100 px-0 py-0'
+                ? 'ch-bubble-user px-4 py-2.5'
+                : 'ch-bubble-assistant max-w-none px-5 py-4 text-ink-800 dark:text-cream-100 prose prose-sm dark:prose-invert'
             }`}
           >
             {/* User Images (displayed before text) */}

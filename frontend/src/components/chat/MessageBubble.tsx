@@ -180,10 +180,10 @@ export function MessageBubble({ message, hasError = false }: MessageBubbleProps)
         {/* Message Text (hide while only thinking) */}
         {!isThinkingPhase && (
           <div
-            className={`text-sm leading-relaxed break-words ${
+            className={`text-[15px] leading-relaxed break-words ${
               isUser
-                ? 'bg-gradient-to-br from-blue-500 to-blue-500 text-white px-4 py-1 rounded-2xl shadow-sm'
-                : 'prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-100 px-0 py-0'
+                ? 'ch-bubble-user px-4 py-2.5'
+                : 'ch-bubble-assistant max-w-none px-5 py-4 text-ink-800 dark:text-cream-100 prose prose-sm dark:prose-invert'
             }`}
           >
             {/* User Images (displayed before text) */}
@@ -194,7 +194,7 @@ export function MessageBubble({ message, hasError = false }: MessageBubbleProps)
                     key={idx}
                     src={img}
                     alt={`Uploaded image ${idx + 1}`}
-                    className="max-w-[200px] max-h-[200px] rounded-lg object-cover"
+                    className="max-w-[200px] max-h-[200px] rounded-xl object-cover border border-white/20"
                   />
                 ))}
               </div>
@@ -263,7 +263,7 @@ export function MessageBubble({ message, hasError = false }: MessageBubbleProps)
           
           {/* Real-time elapsed time during streaming */}
           {!isUser && message.isStreaming && elapsedTime > 0 && (
-            <span className="inline-flex items-center gap-1 text-blue-500 dark:text-blue-400">
+            <span className="inline-flex items-center gap-1 text-ember-600 dark:text-ember-300">
               <Loader2 className="w-3 h-3 animate-spin" />
               {formatDuration(elapsedTime)}
             </span>

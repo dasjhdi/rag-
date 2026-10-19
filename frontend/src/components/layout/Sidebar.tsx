@@ -189,8 +189,8 @@ export function Sidebar({
                 className={`
           fixed md:static inset-y-0 left-0 z-30
           flex flex-col flex-none
-          bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-950
-          border-r border-gray-200 dark:border-gray-800
+          bg-cream-100/70 dark:bg-[#151110]
+          border-r border-cream-300/60 dark:border-white/5
           transform transition-all duration-300 ease-in-out shadow-xl md:shadow-none
           ${isOpen
                         ? 'translate-x-0 w-72 md:w-72'
@@ -211,11 +211,11 @@ export function Sidebar({
                 {/* Conversation List */}
                 <div className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
                     <div className="flex items-center justify-between px-2 mb-2">
-                        <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wider">
-                            {isAgentMode ? 'Recent Agent Sessions' : 'Recent Chats'}
+                        <p className="text-[10px] text-ink-400 dark:text-ink-400 font-semibold uppercase tracking-[0.18em]">
+                            {isAgentMode ? 'Recent Sessions' : 'Recent Chats'}
                         </p>
                         {totalConversations > 0 && (
-                            <span className="text-xs text-gray-400 dark:text-gray-500 bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded-full">
+                            <span className="text-[10px] text-ink-500 dark:text-ink-300 bg-cream-200/80 dark:bg-white/[0.06] px-1.5 py-0.5 rounded-full tabular-nums">
                                 {totalConversations}
                             </span>
                         )}
@@ -223,7 +223,7 @@ export function Sidebar({
 
                     {groupedConversations.map((group) => (
                         <div key={group.category} className="mb-2">
-                            <p className="text-xs text-gray-400 dark:text-gray-500 px-2 py-1 font-medium">
+                            <p className="text-[10px] text-ink-400 px-2 py-1 font-medium tracking-wide">
                                 {group.label}
                             </p>
 
@@ -257,19 +257,21 @@ export function Sidebar({
                     {hasMoreConversations && onLoadMoreConversations && (
                         <button
                             onClick={onLoadMoreConversations}
-                            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs text-ink-500 dark:text-ink-300 hover:bg-white/60 dark:hover:bg-white/5 rounded-xl transition-colors"
                         >
                             <ChevronDown className="w-4 h-4" />
-                            Load more
+                            加载更多
                         </button>
                     )}
 
                     {/* Empty State */}
                     {conversations.length === 0 && (
-                        <div className="text-center text-gray-400 dark:text-gray-500 text-sm py-12">
-                            <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                            <p>No conversations yet</p>
-                            <p className="text-xs mt-1">Start a new chat to begin!</p>
+                        <div className="text-center text-ink-400 text-sm py-12">
+                            <div className="w-12 h-12 mx-auto mb-3 rounded-2xl bg-white/60 dark:bg-white/5 border border-cream-300/50 dark:border-white/10 flex items-center justify-center">
+                                <MessageSquare className="w-5 h-5 opacity-60" />
+                            </div>
+                            <p className="text-ink-500 dark:text-ink-300">还没有对话</p>
+                            <p className="text-xs mt-1 text-ink-400">从上方「开启新对话」开始</p>
                         </div>
                     )}
                 </div>
@@ -303,46 +305,61 @@ function SidebarHeader({
     onToggleAgentMode?: () => void;
 }) {
     return (
-        <div className="p-4 border-b border-gray-200 dark:border-gray-800">
-            <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 flex items-center justify-center">
+        <div className="px-4 pt-5 pb-4">
+            <div className="flex items-center justify-between mb-5">
+                <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-9 h-9 rounded-2xl bg-white dark:bg-white/5 border border-cream-300/70 dark:border-white/10 flex items-center justify-center p-1.5 shadow-sm shrink-0">
                         <img
-                            src="/logo.png"
+                            src="/logo1.png"
                             alt="CookHero Logo"
                             className="w-full h-full object-contain"
                         />
                     </div>
-                    <span className="font-bold text-gray-800 dark:text-gray-100">CookHero</span>
-                    
-                    {onToggleAgentMode && (
-                        <button
-                            onClick={onToggleAgentMode}
-                            className={`ml-2 flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border transition-colors bg-orange-100 text-orange-600 border-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:border-orange-800 hover:bg-orange-200 dark:hover:bg-orange-800
-                            `}
-                            title={isAgentMode ? "Switch to standard chat" : "Switch to Agent mode"}
-                        >
-                            {isAgentMode ? <Bot className="w-3 h-3" /> : <MessageSquare className="w-3 h-3" />}
-                            {isAgentMode ? 'Agent Mode' : '\u00A0Chat Mode'}
-                        </button>
-                    )}
+                    <div className="min-w-0">
+                        <div className="ch-wordmark text-[17px] leading-none text-ink-900 dark:text-cream-100">
+                            CookHero
+                        </div>
+                        <div className="text-[10px] tracking-[0.16em] uppercase text-ink-400 dark:text-ink-400 mt-1">
+                            Kitchen Studio
+                        </div>
+                    </div>
                 </div>
-                <button
-                    onClick={toggleSidebar}
-                    className="md:hidden p-2 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-lg transition-colors"
-                    aria-label="Close sidebar"
-                >
-                    <PanelLeftClose className="w-5 h-5" />
-                </button>
+                <div className="md:hidden">
+                    <button
+                        onClick={toggleSidebar}
+                        className="ch-icon-btn"
+                        aria-label="Close sidebar"
+                    >
+                        <PanelLeftClose className="w-5 h-5" />
+                    </button>
+                </div>
             </div>
+
             <button
                 onClick={onNewChat}
-                className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 text-white rounded-xl text-sm font-medium shadow-sm transition-all duration-200 hover:shadow-md bg-gradient-to-r from-orange-400 to-orange-500 hover:from-orange-500 hover:to-orange-600
-                `}
+                className="ch-btn ch-btn-primary w-full !rounded-2xl !py-2.5"
             >
                 <Plus className="w-4 h-4" />
-                {isAgentMode ? 'New Agent Session' : 'New Chat Session'}
+                {isAgentMode ? '新建 Agent 会话' : '开启新对话'}
             </button>
+
+            {onToggleAgentMode && (
+                <button
+                    onClick={onToggleAgentMode}
+                    className="mt-2 w-full flex items-center justify-between px-3 py-2 rounded-2xl border border-cream-300/70 dark:border-white/10 bg-white/50 dark:bg-white/[0.03] hover:border-ember-300/60 transition-colors group"
+                    title={isAgentMode ? '切换到标准对话' : '切换到 Agent 模式'}
+                >
+                    <span className="flex items-center gap-2 text-xs font-medium text-ink-600 dark:text-ink-200">
+                        <span className={`w-6 h-6 rounded-lg flex items-center justify-center ${isAgentMode ? 'bg-ember-500/12 text-ember-600 dark:text-ember-300' : 'bg-herb-500/12 text-herb-600 dark:text-herb-300'}`}>
+                            {isAgentMode ? <Bot className="w-3.5 h-3.5" /> : <MessageSquare className="w-3.5 h-3.5" />}
+                        </span>
+                        {isAgentMode ? 'Agent 模式' : '对话模式'}
+                    </span>
+                    <span className="text-[10px] text-ink-400 group-hover:text-ember-600 dark:group-hover:text-ember-300 transition-colors">
+                        切换 →
+                    </span>
+                </button>
+            )}
         </div>
     );
 }
@@ -362,21 +379,21 @@ function SidebarFooter({
     onProfileClick: () => void;
 }) {
     return (
-        <div className="p-4 border-t border-gray-200 dark:border-gray-800 bg-white/50 dark:bg-gray-900/50">
-            <div className="flex items-center justify-between">
+        <div className="p-3 border-t border-cream-300/50 dark:border-white/5">
+            <div className="flex items-center justify-between gap-2 rounded-2xl bg-white/60 dark:bg-white/[0.04] border border-cream-300/50 dark:border-white/10 px-2.5 py-2">
                 <button
                     onClick={onProfileClick}
-                    className="flex items-center gap-3 focus:outline-none"
+                    className="flex items-center gap-2.5 focus:outline-none min-w-0 group"
                 >
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs shadow-sm">
+                    <div className="w-8 h-8 rounded-full ch-avatar flex items-center justify-center font-bold text-xs shrink-0">
                         {username ? username.charAt(0).toUpperCase() : 'U'}
                     </div>
-                    <div className="text-left">
-                        <div className="font-medium text-gray-900 dark:text-white text-sm">
+                    <div className="text-left min-w-0">
+                        <div className="font-semibold text-ink-900 dark:text-cream-100 text-[13px] truncate">
                             {username || 'User'}
                         </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400">
-                            View & edit profile
+                        <div className="text-[10px] text-ink-400 group-hover:text-ember-600 dark:group-hover:text-ember-300 transition-colors">
+                            个人资料与设置
                         </div>
                     </div>
                 </button>
@@ -392,7 +409,6 @@ function SidebarFooter({
 function ConversationItem({
     conversation,
     isActive,
-    isAgentMode,
     isEditing,
     editingTitle,
     menuOpen,
@@ -434,8 +450,8 @@ function ConversationItem({
 
     if (isEditing) {
         return (
-            <div className={`flex items-center gap-2 px-3 py-2.5 rounded-xl bg-white dark:bg-gray-800 border ${isAgentMode ? 'border-orange-400 dark:border-orange-500' : 'border-orange-400 dark:border-orange-500'}`}>
-                <MessageSquare className={`w-4 h-4 shrink-0 ${isAgentMode ? 'text-orange-500' : 'text-orange-500'}`} />
+            <div className="flex items-center gap-2 px-3 py-2.5 rounded-2xl bg-white dark:bg-white/[0.06] border border-ember-400/60 shadow-sm">
+                <MessageSquare className="w-4 h-4 shrink-0 text-ember-500" />
                 <input
                     ref={editInputRef}
                     type="text"
@@ -447,7 +463,7 @@ function ConversationItem({
                         if (e.key === 'Enter' && !isComposing) onRenameSave();
                         if (e.key === 'Escape') onRenameCancel();
                     }}
-                    className="flex-1 bg-transparent text-sm text-gray-900 dark:text-white outline-none"
+                    className="flex-1 bg-transparent text-sm text-ink-900 dark:text-cream-100 outline-none"
                 />
                 <button
                     onClick={onRenameSave}
@@ -469,24 +485,27 @@ function ConversationItem({
 
     return (
         <div className="relative group">
+            {isActive && (
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 rounded-r-full bg-ember-500" />
+            )}
             <button
                 onClick={onSelect}
                 className={`
-          w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-sm transition-all duration-200
+          w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl text-left text-sm transition-all duration-200
           ${isActive
-                        ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white font-medium shadow-sm border border-gray-200 dark:border-gray-700'
-                        : 'text-gray-600 dark:text-gray-400 hover:bg-white/50 dark:hover:bg-gray-800/50'
+                        ? 'bg-white dark:bg-white/[0.07] text-ink-900 dark:text-cream-100 font-medium shadow-sm border border-cream-300/60 dark:border-white/10'
+                        : 'text-ink-600 dark:text-ink-200/80 hover:bg-white/60 dark:hover:bg-white/[0.04] border border-transparent'
                     }
         `}
             >
                 <MessageSquare
-                    className={`w-4 h-4 shrink-0 ${isActive ? (isAgentMode ? 'text-orange-500' : 'text-orange-500') : ''}`}
+                    className={`w-4 h-4 shrink-0 transition-colors ${isActive ? 'text-ember-500' : 'text-ink-400 group-hover:text-ember-500/80'}`}
                 />
                 <span className="truncate flex-1">{displayTitle}</span>
 
                 <div
                     onClick={onMenuClick}
-                    className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-gray-200 dark:hover:bg-gray-700 transition-opacity"
+                    className="p-1 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-cream-200 dark:hover:bg-white/10 transition-opacity text-ink-400"
                 >
                     <MoreHorizontal className="w-4 h-4" />
                 </div>
@@ -496,25 +515,25 @@ function ConversationItem({
             {menuOpen && (
                 <div
                     ref={menuRef}
-                    className="absolute right-0 top-full mt-1 z-50 w-40 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1"
+                    className="absolute right-0 top-full mt-1 z-50 w-40 ch-card !rounded-2xl overflow-hidden py-1"
                 >
                     {deleteConfirm ? (
                         <div className="px-3 py-2">
-                            <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
-                                Delete this chat?
+                            <p className="text-xs text-ink-500 dark:text-ink-300 mb-2">
+                                确定删除这段对话？
                             </p>
                             <div className="flex gap-2">
                                 <button
                                     onClick={onDeleteConfirm}
-                                    className="flex-1 px-2 py-1 text-xs bg-red-500 hover:bg-red-600 text-white rounded transition-colors"
+                                    className="flex-1 px-2 py-1 text-xs bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors"
                                 >
-                                    Delete
+                                    删除
                                 </button>
                                 <button
                                     onClick={onDeleteCancel}
-                                    className="flex-1 px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded transition-colors"
+                                    className="flex-1 px-2 py-1 text-xs bg-cream-200 dark:bg-white/10 hover:bg-cream-300 dark:hover:bg-white/15 text-ink-700 dark:text-ink-200 rounded-lg transition-colors"
                                 >
-                                    Cancel
+                                    取消
                                 </button>
                             </div>
                         </div>
@@ -522,17 +541,17 @@ function ConversationItem({
                         <>
                             <button
                                 onClick={onRenameClick}
-                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-ink-700 dark:text-ink-200 hover:bg-cream-100 dark:hover:bg-white/5"
                             >
                                 <Pencil className="w-4 h-4" />
-                                Rename
+                                重命名
                             </button>
                             <button
                                 onClick={onDeleteClick}
-                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-cream-100 dark:hover:bg-white/5"
                             >
                                 <Trash2 className="w-4 h-4" />
-                                Delete
+                                删除
                             </button>
                         </>
                     )}

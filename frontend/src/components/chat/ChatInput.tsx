@@ -205,24 +205,17 @@ export function ChatInput({
   return (
     <div className="relative">
       {/* Feature toggles row */}
-      <div className="flex items-center gap-2 mb-2">
+      <div className="flex items-center gap-2 mb-2 px-1">
         <button
           onClick={() => setWebSearchEnabled(!webSearchEnabled)}
-          className={`
-            inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium
-            transition-all duration-200 border
-            ${webSearchEnabled
-              ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800'
-              : 'bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
-            }
-          `}
+          className={`ch-chip ${webSearchEnabled ? 'border-ember-300/70 bg-ember-50 text-ember-700 dark:bg-ember-500/10 dark:text-ember-300 dark:border-ember-500/30' : ''}`}
           title={webSearchEnabled ? 'Web Search enabled' : 'Enable Web Search'}
           aria-label={webSearchEnabled ? 'Disable Web Search' : 'Enable Web Search'}
         >
           <Globe className="w-3.5 h-3.5" />
-          <span>Web Search</span>
+          <span>联网搜索</span>
           {webSearchEnabled && (
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+            <span className="w-1.5 h-1.5 rounded-full bg-ember-500 animate-pulse" />
           )}
         </button>
       </div>
@@ -235,7 +228,7 @@ export function ChatInput({
               <img
                 src={url}
                 alt={`Upload ${index + 1}`}
-                className="w-16 h-16 object-cover rounded-lg border border-gray-200 dark:border-gray-700"
+                className="w-16 h-16 object-cover rounded-xl border border-cream-300/70 dark:border-white/10"
               />
               <button
                 onClick={() => removeImage(index)}
@@ -250,16 +243,16 @@ export function ChatInput({
       )}
       
       {/* Input area */}
-      <div className="relative flex items-end gap-2 p-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-sm focus-within:ring-2 focus-within:ring-orange-500/20 transition-all">
+      <div className="ch-composer relative flex items-end gap-1.5 p-2">
         {/* Image upload button */}
         <button
           onClick={handleImageClick}
           disabled={images.length >= MAX_IMAGES || isStreaming}
           className={`
-            p-2 rounded-lg transition-all duration-200
+            ch-icon-btn shrink-0
             ${images.length >= MAX_IMAGES || isStreaming
-              ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
-              : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-300'
+              ? '!text-ink-300 dark:!text-ink-600 cursor-not-allowed'
+              : ''
             }
           `}
           title={images.length >= MAX_IMAGES ? `Maximum ${MAX_IMAGES} images` : 'Attach file'}
@@ -288,33 +281,33 @@ export function ChatInput({
           onPaste={handlePaste}
           onCompositionStart={() => setIsComposing(true)}
           onCompositionEnd={() => setIsComposing(false)}
-          placeholder={images.length > 0 ? 'Describe your image or ask a question...' : placeholder}
+          placeholder={images.length > 0 ? '描述这张图片，或直接提问…' : placeholder}
           rows={1}
-          className="flex-1 max-h-[200px] py-1.5 px-2 bg-transparent border-none focus:ring-0 focus:outline-none resize-none text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 text-sm leading-relaxed scrollbar-hide"
+          className="flex-1 max-h-[200px] py-2 px-1.5 bg-transparent border-none focus:ring-0 focus:outline-none resize-none text-ink-900 dark:text-cream-100 placeholder-ink-400 text-[15px] leading-relaxed scrollbar-hide"
         />
         {isStreaming ? (
           <button
             onClick={handleCancel}
-            className="p-2 rounded-lg transition-all duration-200 bg-red-500 text-white hover:bg-red-600 shadow-sm"
+            className="p-2.5 rounded-full transition-all duration-200 bg-red-500 text-white hover:bg-red-600 shadow-sm shrink-0"
             title="Stop generating"
             aria-label="Stop generating"
           >
-            <Square className="w-5 h-5" />
+            <Square className="w-4 h-4" />
           </button>
         ) : (
           <button
             onClick={handleSend}
             disabled={!canSend}
             className={`
-              p-2 rounded-lg transition-all duration-200
+              p-2.5 rounded-full transition-all duration-200 shrink-0
               ${canSend
-                ? 'bg-blue-500 text-white hover:bg-blue-600 shadow-sm'
-                : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                ? 'ch-btn-primary !p-2.5'
+                : 'bg-cream-200 dark:bg-white/5 text-ink-300 dark:text-ink-600 cursor-not-allowed'
               }
             `}
             aria-label="Send message"
           >
-            <SendHorizontal className="w-5 h-5" />
+            <SendHorizontal className="w-4 h-4" />
           </button>
         )}
       </div>

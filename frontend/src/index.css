@@ -1,22 +1,206 @@
 @config "../tailwind.config.ts";
 @import "tailwindcss";
 
+/* =============================================================================
+   CookHero Design System — "Ember Kitchen"
+   暖米色底 / 墨色文字 / 炭火橙主色 / 香草绿辅色
+   ========================================================================== */
+
+@theme {
+  --font-sans: "Inter", "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei",
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Iowan Old Style", "Palatino Linotype", Georgia,
+    "Songti SC", "Noto Serif SC", serif;
+
+  /* --- 品牌主色：炭火橙 --- */
+  --color-ember-50: #fdf5ef;
+  --color-ember-100: #fbe5d6;
+  --color-ember-200: #f7c9ab;
+  --color-ember-300: #f2a87d;
+  --color-ember-400: #ec8654;
+  --color-ember-500: #e2602c;
+  --color-ember-600: #c74e1f;
+  --color-ember-700: #a43d19;
+  --color-ember-800: #83321a;
+  --color-ember-900: #6b2b18;
+
+  /* --- 辅助色：香草绿 / 蜂蜜金 --- */
+  --color-herb-50: #f2f7f1;
+  --color-herb-100: #e2eee1;
+  --color-herb-200: #c6dcc5;
+  --color-herb-300: #9dc09c;
+  --color-herb-400: #75a074;
+  --color-herb-500: #52795c;
+  --color-herb-600: #3f6249;
+  --color-herb-700: #33503c;
+  --color-herb-800: #2b4032;
+  --color-herb-900: #24352b;
+
+  --color-honey-100: #f8ecd2;
+  --color-honey-200: #efd7a5;
+  --color-honey-300: #e3bd74;
+  --color-honey-400: #d3a04c;
+  --color-honey-500: #b98432;
+
+  /* --- 中性色：暖米 / 暖墨 --- */
+  --color-cream-50: #fdfbf7;
+  --color-cream-100: #f8f3ea;
+  --color-cream-200: #f0e7d8;
+  --color-cream-300: #e3d5c0;
+  --color-ink-100: #efe6d9;
+  --color-ink-200: #dccdba;
+  --color-ink-300: #bca992;
+  --color-ink-400: #97836f;
+  --color-ink-500: #756354;
+  --color-ink-600: #57493c;
+  --color-ink-700: #3d332a;
+  --color-ink-800: #2a231c;
+  --color-ink-900: #1d1814;
+  --color-ink-950: #14100d;
+
+  /* --- 覆盖默认中性色，使既有 bg-white / text-slate-* 自动融入暖色体系 --- */
+  --color-white: #fffdf9;
+  --color-gray-50: #faf6ef;
+  --color-gray-100: #f4eee3;
+  --color-gray-200: #e9dfd0;
+  --color-gray-300: #d8c9b6;
+  --color-gray-400: #b7a48d;
+  --color-gray-500: #95816b;
+  --color-gray-600: #786653;
+  --color-gray-700: #5a4b3c;
+  --color-gray-800: #3a2f25;
+  --color-gray-900: #241d17;
+  --color-gray-950: #17120e;
+
+  --color-slate-50: #faf6ef;
+  --color-slate-100: #f4eee3;
+  --color-slate-200: #e9dfd0;
+  --color-slate-300: #d8c9b6;
+  --color-slate-400: #b7a48d;
+  --color-slate-500: #95816b;
+  --color-slate-600: #786653;
+  --color-slate-700: #5a4b3c;
+  --color-slate-800: #3a2f25;
+  --color-slate-900: #241d17;
+  --color-slate-950: #17120e;
+
+  --color-neutral-50: #faf6ef;
+  --color-neutral-100: #f4eee3;
+  --color-neutral-200: #e9dfd0;
+  --color-neutral-300: #d8c9b6;
+  --color-neutral-400: #b7a48d;
+  --color-neutral-500: #95816b;
+  --color-neutral-600: #786653;
+  --color-neutral-700: #5a4b3c;
+  --color-neutral-800: #3a2f25;
+  --color-neutral-900: #241d17;
+  --color-neutral-950: #17120e;
+
+  /* --- 统一旧的 orange / amber 语义色到品牌色系 --- */
+  --color-orange-50: #fdf5ef;
+  --color-orange-100: #fbe5d6;
+  --color-orange-200: #f7c9ab;
+  --color-orange-300: #f2a87d;
+  --color-orange-400: #ec8654;
+  --color-orange-500: #e2602c;
+  --color-orange-600: #c74e1f;
+  --color-orange-700: #a43d19;
+  --color-orange-800: #83321a;
+  --color-orange-900: #6b2b18;
+
+  --color-amber-50: #fbf5e8;
+  --color-amber-100: #f6ead0;
+  --color-amber-200: #eed9a9;
+  --color-amber-300: #e2c078;
+  --color-amber-400: #d3a04c;
+  --color-amber-500: #b98432;
+  --color-amber-600: #9a6a25;
+  --color-amber-700: #7d551f;
+  --color-amber-800: #66451e;
+  --color-amber-900: #563a1c;
+
+  /* --- 旧 blue 语义色改为低饱和的黛蓝，避免与暖色冲突 --- */
+  --color-blue-50: #f0f4f6;
+  --color-blue-100: #dfe9ec;
+  --color-blue-200: #c2d4da;
+  --color-blue-300: #9bb8c2;
+  --color-blue-400: #7297a5;
+  --color-blue-500: #527d8d;
+  --color-blue-600: #416673;
+  --color-blue-700: #36535e;
+  --color-blue-800: #2f454d;
+  --color-blue-900: #2a3b42;
+
+  /* --- 阴影与圆角 --- */
+  --shadow-soft: 0 1px 2px rgba(45, 32, 20, 0.04),
+    0 12px 30px -14px rgba(45, 32, 20, 0.16);
+  --shadow-lift: 0 2px 6px rgba(45, 32, 20, 0.05),
+    0 26px 50px -22px rgba(45, 32, 20, 0.28);
+  --shadow-ember: 0 10px 26px -12px rgba(226, 96, 44, 0.55);
+  --radius-4xl: 2rem;
+  --radius-5xl: 2.75rem;
+}
+
+/* =============================================================================
+   Base
+   ========================================================================== */
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
 :root {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  line-height: 1.5;
+  font-family: var(--font-sans);
+  line-height: 1.6;
   font-weight: 400;
+  color-scheme: light;
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  background-color: var(--color-cream-50);
+  color: var(--color-ink-900);
+  background-image:
+    radial-gradient(52rem 34rem at 92% -12%, rgba(242, 168, 125, 0.18), transparent 62%),
+    radial-gradient(44rem 30rem at -8% 108%, rgba(82, 121, 92, 0.1), transparent 60%);
+  background-attachment: fixed;
 }
 
-/* Custom Scrollbar */
+.dark body {
+  color-scheme: dark;
+  background-color: #12100c;
+  color: #f1e8da;
+  background-image:
+    radial-gradient(52rem 34rem at 92% -12%, rgba(226, 96, 44, 0.13), transparent 62%),
+    radial-gradient(44rem 30rem at -8% 108%, rgba(82, 121, 92, 0.1), transparent 60%);
+}
+
+::selection {
+  background: rgba(226, 96, 44, 0.22);
+  color: var(--color-ink-900);
+}
+
+.dark ::selection {
+  background: rgba(242, 168, 125, 0.3);
+  color: #fff8f1;
+}
+
+:focus-visible {
+  outline: 2px solid rgba(226, 96, 44, 0.45);
+  outline-offset: 2px;
+}
+
+/* =============================================================================
+   Scrollbar
+   ========================================================================== */
+
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
@@ -24,23 +208,30 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 4px;
+  background: #d8c9b6;
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #b7a48d;
+  border: 3px solid transparent;
+  background-clip: content-box;
 }
 
 .dark ::-webkit-scrollbar-thumb {
-  background: #475569;
+  background: #4a3d31;
+  border: 3px solid transparent;
+  background-clip: content-box;
 }
 
 .dark ::-webkit-scrollbar-thumb:hover {
-  background: #64748b;
+  background: #6b5847;
+  border: 3px solid transparent;
+  background-clip: content-box;
 }
 
-/* Hide scrollbar for specific elements */
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
@@ -50,7 +241,549 @@ body {
   scrollbar-width: none;
 }
 
-@media (max-height: 680px), (max-width: 768px) {
+/* =============================================================================
+   Layout & surfaces
+   ========================================================================== */
+
+.ch-app-bg {
+  background-color: var(--color-cream-50);
+  background-image:
+    radial-gradient(46rem 32rem at 88% -6%, rgba(242, 168, 125, 0.2), transparent 64%),
+    radial-gradient(38rem 26rem at -4% 104%, rgba(82, 121, 92, 0.1), transparent 62%);
+}
+
+.dark .ch-app-bg {
+  background-color: #12100c;
+  background-image:
+    radial-gradient(46rem 32rem at 88% -6%, rgba(226, 96, 44, 0.12), transparent 64%),
+    radial-gradient(38rem 26rem at -4% 104%, rgba(82, 121, 92, 0.1), transparent 62%);
+}
+
+.ch-glass {
+  background: rgba(253, 251, 247, 0.72);
+  backdrop-filter: saturate(1.4) blur(16px);
+  -webkit-backdrop-filter: saturate(1.4) blur(16px);
+  border-color: rgba(216, 201, 182, 0.6);
+}
+
+.dark .ch-glass {
+  background: rgba(20, 16, 13, 0.72);
+  border-color: rgba(216, 201, 182, 0.12);
+}
+
+.ch-card {
+  background: rgba(255, 253, 249, 0.9);
+  border: 1px solid rgba(216, 201, 182, 0.55);
+  border-radius: 1.25rem;
+  box-shadow: var(--shadow-soft);
+}
+
+.dark .ch-card {
+  background: rgba(36, 29, 23, 0.72);
+  border-color: rgba(216, 201, 182, 0.12);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 18px 40px -20px rgba(0, 0, 0, 0.6);
+}
+
+.ch-card-hover {
+  transition: transform 0.3s cubic-bezier(0.22, 0.68, 0, 1),
+    box-shadow 0.3s cubic-bezier(0.22, 0.68, 0, 1),
+    border-color 0.3s ease;
+}
+
+.ch-card-hover:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-lift);
+  border-color: rgba(226, 96, 44, 0.32);
+}
+
+.ch-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1.75rem;
+  background:
+    radial-gradient(34rem 20rem at 88% -20%, rgba(226, 96, 44, 0.5), transparent 60%),
+    radial-gradient(28rem 18rem at 4% 120%, rgba(82, 121, 92, 0.35), transparent 60%),
+    linear-gradient(135deg, #241d17 0%, #1d1814 55%, #2a231c 100%);
+  color: #f8f3ea;
+  box-shadow: 0 24px 60px -28px rgba(29, 24, 20, 0.6);
+}
+
+.ch-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.14) 1px, transparent 1px);
+  background-size: 22px 22px;
+  opacity: 0.18;
+  mask-image: radial-gradient(70% 70% at 70% 20%, black, transparent 75%);
+  -webkit-mask-image: radial-gradient(70% 70% at 70% 20%, black, transparent 75%);
+}
+
+/* =============================================================================
+   Typography
+   ========================================================================== */
+
+.ch-wordmark {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+  font-weight: 600;
+}
+
+.ch-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.025em;
+  line-height: 1.12;
+}
+
+.ch-eyebrow {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-ember-600);
+}
+
+.dark .ch-eyebrow {
+  color: var(--color-ember-300);
+}
+
+.ch-title {
+  font-size: 1.75rem;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--color-ink-900);
+}
+
+.dark .ch-title {
+  color: #f8f3ea;
+}
+
+.ch-muted {
+  color: var(--color-ink-500);
+}
+
+.dark .ch-muted {
+  color: var(--color-ink-300);
+}
+
+/* =============================================================================
+   Buttons
+   ========================================================================== */
+
+.ch-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 999px;
+  padding: 0.6rem 1.1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  transition: transform 0.18s ease, box-shadow 0.18s ease,
+    background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.ch-btn:active {
+  transform: translateY(1px) scale(0.995);
+}
+
+.ch-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.ch-btn-primary {
+  color: #fff8f1;
+  background-image: linear-gradient(135deg, #f18a55 0%, #e2602c 55%, #c74e1f 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    0 10px 24px -14px rgba(226, 96, 44, 0.75);
+}
+
+.ch-btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    0 16px 30px -14px rgba(226, 96, 44, 0.8);
+}
+
+.ch-btn-secondary {
+  background: rgba(255, 253, 249, 0.75);
+  border-color: rgba(216, 201, 182, 0.75);
+  color: var(--color-ink-700);
+}
+
+.ch-btn-secondary:hover {
+  background: #fffdf9;
+  border-color: rgba(226, 96, 44, 0.35);
+  color: var(--color-ink-900);
+  box-shadow: 0 8px 18px -14px rgba(45, 32, 20, 0.5);
+}
+
+.dark .ch-btn-secondary {
+  background: rgba(58, 47, 37, 0.5);
+  border-color: rgba(216, 201, 182, 0.16);
+  color: #e9dfd0;
+}
+
+.dark .ch-btn-secondary:hover {
+  background: rgba(58, 47, 37, 0.8);
+  border-color: rgba(242, 168, 125, 0.35);
+  color: #fff8f1;
+}
+
+.ch-btn-ghost {
+  background: transparent;
+  color: var(--color-ink-600);
+}
+
+.ch-btn-ghost:hover {
+  background: rgba(240, 231, 216, 0.7);
+  color: var(--color-ink-900);
+}
+
+.dark .ch-btn-ghost {
+  color: #dccdba;
+}
+
+.dark .ch-btn-ghost:hover {
+  background: rgba(58, 47, 37, 0.6);
+  color: #fff8f1;
+}
+
+.ch-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  color: var(--color-ink-500);
+  transition: background-color 0.18s ease, color 0.18s ease;
+  cursor: pointer;
+}
+
+.ch-icon-btn:hover {
+  background: rgba(240, 231, 216, 0.8);
+  color: var(--color-ink-900);
+}
+
+.dark .ch-icon-btn {
+  color: var(--color-ink-300);
+}
+
+.dark .ch-icon-btn:hover {
+  background: rgba(58, 47, 37, 0.7);
+  color: #fff8f1;
+}
+
+/* =============================================================================
+   Form controls
+   ========================================================================== */
+
+.ch-input {
+  width: 100%;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(216, 201, 182, 0.8);
+  background: rgba(255, 253, 249, 0.9);
+  padding: 0.65rem 0.95rem;
+  font-size: 0.9rem;
+  color: var(--color-ink-900);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease,
+    background-color 0.18s ease;
+}
+
+.ch-input::placeholder {
+  color: var(--color-ink-400);
+}
+
+.ch-input:focus {
+  outline: none;
+  border-color: rgba(226, 96, 44, 0.55);
+  background: #fffdf9;
+  box-shadow: 0 0 0 4px rgba(226, 96, 44, 0.12);
+}
+
+.dark .ch-input {
+  background: rgba(23, 18, 14, 0.75);
+  border-color: rgba(216, 201, 182, 0.16);
+  color: #f1e8da;
+}
+
+.dark .ch-input:focus {
+  background: rgba(23, 18, 14, 0.95);
+  border-color: rgba(242, 168, 125, 0.5);
+  box-shadow: 0 0 0 4px rgba(242, 168, 125, 0.12);
+}
+
+.ch-label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--color-ink-600);
+  margin-bottom: 0.4rem;
+}
+
+/* 浏览器自动填充时保持暖色输入框，而不是默认的淡蓝色 */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #fffdf9 inset;
+  -webkit-text-fill-color: var(--color-ink-900);
+  caret-color: var(--color-ink-900);
+  transition: background-color 9999s ease-in-out 0s;
+}
+
+.dark input:-webkit-autofill,
+.dark input:-webkit-autofill:hover,
+.dark input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #17120e inset;
+  -webkit-text-fill-color: #f1e8da;
+  caret-color: #f1e8da;
+}
+
+.dark .ch-label {
+  color: var(--color-ink-300);
+}
+
+/* =============================================================================
+   Chips / pills
+   ========================================================================== */
+
+.ch-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 999px;
+  border: 1px solid rgba(216, 201, 182, 0.7);
+  background: rgba(255, 253, 249, 0.7);
+  padding: 0.3rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-ink-600);
+  transition: all 0.18s ease;
+}
+
+.ch-chip:hover {
+  border-color: rgba(226, 96, 44, 0.35);
+  color: var(--color-ink-900);
+}
+
+.ch-chip-active {
+  background: var(--color-ink-900);
+  border-color: var(--color-ink-900);
+  color: #f8f3ea;
+}
+
+.ch-chip-active:hover {
+  background: var(--color-ink-800);
+  border-color: var(--color-ink-800);
+  color: #fff8f1;
+}
+
+.dark .ch-chip {
+  background: rgba(58, 47, 37, 0.45);
+  border-color: rgba(216, 201, 182, 0.14);
+  color: #dccdba;
+}
+
+.dark .ch-chip-active {
+  background: #f8f3ea;
+  border-color: #f8f3ea;
+  color: #1d1814;
+}
+
+.ch-nav-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 999px;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--color-ink-600);
+  transition: all 0.18s ease;
+  border: 1px solid transparent;
+}
+
+.ch-nav-pill:hover {
+  background: rgba(240, 231, 216, 0.7);
+  color: var(--color-ink-900);
+}
+
+.ch-nav-pill-active {
+  background: var(--color-ink-900);
+  color: #f8f3ea;
+  box-shadow: 0 8px 20px -14px rgba(29, 24, 20, 0.9);
+}
+
+.ch-nav-pill-active:hover {
+  background: var(--color-ink-800);
+  color: #fff8f1;
+}
+
+.dark .ch-nav-pill {
+  color: #dccdba;
+}
+
+.dark .ch-nav-pill:hover {
+  background: rgba(58, 47, 37, 0.6);
+  color: #fff8f1;
+}
+
+.dark .ch-nav-pill-active {
+  background: #f8f3ea;
+  color: #1d1814;
+}
+
+.dark .ch-nav-pill-active:hover {
+  background: #fff8f1;
+  color: #14100d;
+}
+
+/* =============================================================================
+   Conversation
+   ========================================================================== */
+
+.ch-avatar {
+  background-image: linear-gradient(140deg, #f2a87d, #e2602c 55%, #a43d19);
+  color: #fff8f1;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.ch-bubble-user {
+  background-image: linear-gradient(135deg, #ef8654 0%, #e2602c 60%, #c74e1f 100%);
+  color: #fff8f1;
+  border-radius: 1.25rem 1.25rem 0.4rem 1.25rem;
+  box-shadow: 0 14px 30px -18px rgba(226, 96, 44, 0.8);
+}
+
+.ch-bubble-assistant {
+  background: rgba(255, 253, 249, 0.92);
+  border: 1px solid rgba(216, 201, 182, 0.55);
+  border-radius: 1.25rem 1.25rem 1.25rem 0.4rem;
+  box-shadow: var(--shadow-soft);
+}
+
+.dark .ch-bubble-assistant {
+  background: rgba(36, 29, 23, 0.8);
+  border-color: rgba(216, 201, 182, 0.12);
+}
+
+.ch-composer {
+  background: rgba(255, 253, 249, 0.92);
+  border: 1px solid rgba(216, 201, 182, 0.7);
+  border-radius: 1.5rem;
+  box-shadow: 0 18px 40px -28px rgba(45, 32, 20, 0.55);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.ch-composer:focus-within {
+  border-color: rgba(226, 96, 44, 0.45);
+  box-shadow: 0 0 0 4px rgba(226, 96, 44, 0.09),
+    0 22px 44px -28px rgba(45, 32, 20, 0.6);
+}
+
+.dark .ch-composer {
+  background: rgba(30, 24, 19, 0.85);
+  border-color: rgba(216, 201, 182, 0.14);
+}
+
+/* =============================================================================
+   Motion
+   ========================================================================== */
+
+@keyframes ch-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ch-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes ch-glow {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.06);
+  }
+}
+
+@keyframes ch-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.animate-fade-up {
+  animation: ch-fade-up 0.5s cubic-bezier(0.22, 0.68, 0, 1) both;
+}
+
+.animate-float {
+  animation: ch-float 9s ease-in-out infinite;
+}
+
+.animate-glow {
+  animation: ch-glow 7s ease-in-out infinite;
+}
+
+.ch-skeleton {
+  background-image: linear-gradient(
+    90deg,
+    rgba(240, 231, 216, 0.6) 25%,
+    rgba(253, 251, 247, 0.9) 37%,
+    rgba(240, 231, 216, 0.6) 63%
+  );
+  background-size: 200% 100%;
+  animation: ch-shimmer 1.4s linear infinite;
+}
+
+.dark .ch-skeleton {
+  background-image: linear-gradient(
+    90deg,
+    rgba(58, 47, 37, 0.5) 25%,
+    rgba(90, 75, 60, 0.7) 37%,
+    rgba(58, 47, 37, 0.5) 63%
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up,
+  .animate-float,
+  .animate-glow,
+  .ch-skeleton {
+    animation: none !important;
+  }
+}
+
+/* 极矮窗口下隐藏欢迎区，保证输入框与推荐卡可见 */
+@media (max-height: 620px) {
   .empty-state-hero {
     display: none;
   }

@@ -68,9 +68,8 @@ export function ChatWindow({ messages, isLoading, onSuggestionClick, error }: Ch
         <div
             ref={scrollContainerRef}
             className={`
-        flex-1 p-4 md:p-6
-        bg-gradient-to-b from-white to-gray-50 dark:from-gray-900 dark:to-gray-950
-        ${isEmpty ? 'overflow-y-hidden' : 'overflow-y-auto'}
+        flex-1 px-4 pt-6 pb-2 md:px-6
+        overflow-y-auto
       `}
         >
             {isEmpty ? (
@@ -103,111 +102,99 @@ function EmptyState({
     onSuggestionClick?: (text: string) => void;
 }) {
     return (
-        <div className="flex flex-col items-center justify-center h-full w-full text-gray-500 dark:text-gray-400 animate-in fade-in duration-500 overflow-x-hidden px-4 box-border">
-            <section className="empty-state-hero relative flex-1 flex flex-col items-center justify-center overflow-hidden">
-                <div className="relative group w-full px-4">
-                    <div className="w-100 h-48 max-w-5xl mx-auto flex items-center justify-center">
+        <div className="flex flex-col items-center justify-center h-full w-full animate-fade-up overflow-x-hidden px-4 box-border">
+            <section className="empty-state-hero relative flex flex-col items-center justify-center pt-4 pb-8">
+                <div className="relative mb-7">
+                    <div className="absolute inset-0 rounded-full bg-ember-400/25 blur-2xl scale-150" />
+                    <div className="relative w-16 h-16 rounded-[1.4rem] bg-white dark:bg-white/5 border border-cream-300/70 dark:border-white/10 p-2.5 shadow-[0_18px_40px_-24px_rgba(45,32,20,0.5)]">
                         <img
-                            src="/image.png"
-                            alt="CookHero Logo"
-                            className="w-full max-w-4xl object-contain transition-all duration-500 group-hover:scale-105"
+                            src="/logo1.png"
+                            alt="CookHero"
+                            className="w-full h-full object-contain animate-float"
                         />
                     </div>
                 </div>
+                <div className="ch-eyebrow mb-3">Your kitchen, on demand</div>
+                <h1 className="ch-display text-[2.1rem] sm:text-[2.7rem] text-ink-900 dark:text-cream-50 text-center">
+                    今晚，想吃点什么？
+                </h1>
+                <p className="mt-3 text-sm text-ink-500 dark:text-ink-300 text-center max-w-md">
+                    告诉我你手边的食材或此刻的口味，剩下的交给 CookHero。
+                </p>
             </section>
 
-            {/* Feature Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4 w-full max-w-3xl mb-6 sm:mb-8">
-                <FeatureCard
-                    icon={<BookOpen className="w-5 h-5" />}
-                    title="Recipe Search"
-                    description="Find detailed cooking instructions"
-                />
-                <FeatureCard
-                    icon={<Lightbulb className="w-5 h-5" />}
-                    title="Cooking Tips"
-                    description="Learn professional techniques"
-                />
-                <FeatureCard
-                    icon={<UtensilsCrossed className="w-5 h-5" />}
-                    title="Ingredient Match"
-                    description="Discover dishes you can make"
-                />
+            {/* Suggestion Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-2xl mb-6">
+                {[
+                    { text: '红烧肉怎么做？', emoji: '🥩', hint: '经典家常菜' },
+                    { text: '鸡蛋和西红柿能做什么？', emoji: '🥚', hint: '按食材匹配' },
+                    { text: '推荐一道健康晚餐', emoji: '🥗', hint: '营养与热量' },
+                    { text: '如何让炒菜更香？', emoji: '✨', hint: '厨房技巧' },
+                ].map((item) => (
+                    <SuggestionChip
+                        key={item.text}
+                        text={item.text}
+                        emoji={item.emoji}
+                        hint={item.hint}
+                        onClick={onSuggestionClick}
+                    />
+                ))}
             </div>
 
-            {/* Suggestion Chips */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 w-full max-w-2xl">
-                <SuggestionChip
-                    text="红烧肉怎么做？"
-                    emoji="🥩"
-                    onClick={onSuggestionClick}
-                />
-                <SuggestionChip
-                    text="鸡蛋和西红柿能做什么？"
-                    emoji="🥚"
-                    onClick={onSuggestionClick}
-                />
-                <SuggestionChip
-                    text="推荐一道健康晚餐"
-                    emoji="🥗"
-                    onClick={onSuggestionClick}
-                />
-                <SuggestionChip
-                    text="如何让炒菜更香？"
-                    emoji="✨"
-                    onClick={onSuggestionClick}
-                />
+            {/* Feature Strip */}
+            <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-[11px] text-ink-400">
+                <span className="inline-flex items-center gap-1.5">
+                    <BookOpen className="w-3.5 h-3.5" />
+                    菜谱检索
+                </span>
+                <span className="w-1 h-1 rounded-full bg-ink-300/60" />
+                <span className="inline-flex items-center gap-1.5">
+                    <Lightbulb className="w-3.5 h-3.5" />
+                    烹饪技巧
+                </span>
+                <span className="w-1 h-1 rounded-full bg-ink-300/60" />
+                <span className="inline-flex items-center gap-1.5">
+                    <UtensilsCrossed className="w-3.5 h-3.5" />
+                    食材搭配
+                </span>
             </div>
         </div>
     );
 }
 
 /**
- * Feature card in empty state
- */
-function FeatureCard({
-    icon,
-    title,
-    description,
-}: {
-    icon: React.ReactNode;
-    title: string;
-    description: string;
-}) {
-    return (
-        <div className="p-5 bg-white dark:bg-gray-800 border border-gray-200/60 dark:border-gray-700/60 rounded-xl text-center shadow-sm hover:shadow-lg hover:shadow-orange-500/10 hover:-translate-y-1 transition-all duration-300">
-            <div className="w-11 h-11 bg-gradient-to-br from-orange-100 to-orange-50 dark:from-orange-900/40 dark:to-orange-900/20 rounded-lg flex items-center justify-center mx-auto mb-3 text-orange-500 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
-                {icon}
-            </div>
-            <h3 className="font-semibold text-gray-800 dark:text-gray-100 mb-1.5">
-                {title}
-            </h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400">{description}</p>
-        </div>
-    );
-}
-
-/**
- * Suggestion chip button
+ * Suggestion card in empty state
  */
 function SuggestionChip({
     text,
     emoji,
+    hint,
     onClick,
 }: {
     text: string;
     emoji: string;
+    hint?: string;
     onClick?: (text: string) => void;
 }) {
     return (
         <button
-            className="flex items-center gap-3 px-4 py-3.5 bg-white dark:bg-gray-800 border border-gray-200/60 dark:border-gray-700/60 rounded-xl text-sm text-left hover:border-orange-400 dark:hover:border-orange-600 hover:shadow-lg hover:shadow-orange-500/10 hover:-translate-y-0.5 transition-all duration-300 text-gray-700 dark:text-gray-300 group"
+            className="group flex items-center gap-3.5 px-4 py-3.5 ch-card ch-card-hover !rounded-2xl text-left"
             onClick={() => onClick?.(text)}
         >
-            <span className="text-xl group-hover:scale-125 group-hover:rotate-3 transition-all duration-300">
+            <span className="w-10 h-10 rounded-xl bg-cream-100 dark:bg-white/[0.06] border border-cream-200/80 dark:border-white/10 flex items-center justify-center text-lg shrink-0 transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-3">
                 {emoji}
             </span>
-            <span className="group-hover:text-orange-600 dark:group-hover:text-orange-400 transition-colors">{text}</span>
+            <span className="flex-1 min-w-0">
+                <span className="block text-sm font-medium text-ink-800 dark:text-cream-100 truncate">
+                    {text}
+                </span>
+                {hint && (
+                    <span className="block text-[11px] text-ink-400 mt-0.5">{hint}</span>
+                )}
+            </span>
+            <span className="text-ink-300 group-hover:text-ember-500 group-hover:translate-x-0.5 transition-all">
+                →
+            </span>
         </button>
     );
 }

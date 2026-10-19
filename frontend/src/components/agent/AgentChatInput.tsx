@@ -210,13 +210,15 @@ export function AgentChatInput({
   return (
     <div className="relative">
       {/* Tool Selector */}
-      <ToolSelector
-        token={token}
-        selectedTools={selectedTools}
-        onSelectionChange={setSelectedTools}
-        disabled={disabled || isStreaming}
-        onExpandChange={onToolsOpenChange}
-      />
+      <div className="-mx-1 px-1 overflow-x-auto scrollbar-hide">
+        <ToolSelector
+          token={token}
+          selectedTools={selectedTools}
+          onSelectionChange={setSelectedTools}
+          disabled={disabled || isStreaming}
+          onExpandChange={onToolsOpenChange}
+        />
+      </div>
 
       {/* Image previews */}
       {imagePreviewUrls.length > 0 && (
@@ -241,16 +243,16 @@ export function AgentChatInput({
       )}
 
       {/* Input area */}
-      <div className="relative flex items-end gap-2 p-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-sm focus-within:ring-2 focus-within:ring-orange-500/20 transition-all">
+      <div className="ch-composer relative flex items-end gap-1.5 p-2">
         {/* Image upload button */}
         <button
           onClick={handleImageClick}
           disabled={images.length >= MAX_IMAGES || isStreaming}
           className={`
-            p-2 rounded-lg transition-all duration-200
+            ch-icon-btn shrink-0
             ${images.length >= MAX_IMAGES || isStreaming
-              ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
-              : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-300'
+              ? '!text-ink-300 dark:!text-ink-600 cursor-not-allowed'
+              : ''
             }
           `}
           title={images.length >= MAX_IMAGES ? `Maximum ${MAX_IMAGES} images` : 'Attach image'}
@@ -279,14 +281,14 @@ export function AgentChatInput({
           onPaste={handlePaste}
           onCompositionStart={() => setIsComposing(true)}
           onCompositionEnd={() => setIsComposing(false)}
-          placeholder={images.length > 0 ? 'Describe your image or ask a question...' : placeholder}
+          placeholder={images.length > 0 ? '描述这张图片，或直接提问…' : placeholder}
           rows={1}
-          className="flex-1 max-h-[200px] py-1.5 px-2 bg-transparent border-none focus:ring-0 focus:outline-none resize-none text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 text-sm leading-relaxed scrollbar-hide"
+          className="flex-1 max-h-[200px] py-2 px-1.5 bg-transparent border-none focus:ring-0 focus:outline-none resize-none text-ink-900 dark:text-cream-100 placeholder-ink-400 text-[15px] leading-relaxed scrollbar-hide"
         />
         {isStreaming ? (
           <button
             onClick={handleCancel}
-            className="p-2 rounded-lg transition-all duration-200 bg-red-500 text-white hover:bg-red-600 shadow-sm"
+            className="p-2.5 rounded-full transition-all duration-200 bg-red-500 text-white hover:bg-red-600 shadow-sm shrink-0"
             title="Stop generating"
             aria-label="Stop generating"
           >
@@ -297,10 +299,10 @@ export function AgentChatInput({
             onClick={handleSend}
             disabled={!canSend}
             className={`
-              p-2 rounded-lg transition-all duration-200
+              p-2.5 rounded-full transition-all duration-200 shrink-0
               ${canSend
-                ? 'bg-orange-500 text-white hover:bg-orange-600 shadow-sm'
-                : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                ? 'ch-btn-primary !p-2.5'
+                : 'bg-cream-200 dark:bg-white/5 text-ink-300 dark:text-ink-600 cursor-not-allowed'
               }
             `}
             aria-label="Send message"
