@@ -37,3 +37,6 @@ CODEBUDDY.md
 logs/
 blog/
 .ignore
+
+# Local dev run artifacts (stdout/stderr of dev servers)
+.run/
