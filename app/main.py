@@ -14,6 +14,12 @@ from app.api.v1.endpoints import (
     llm_stats,
     agent,
     diet,
+    semantic_metrics,
+    constraints,
+    recipes,
+    pantry,
+    nutrition,
+    family,
 )
 from app.config import settings
 from app.database.session import init_db, close_db
@@ -127,7 +133,9 @@ async def security_headers_middleware(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    response.headers["Permissions-Policy"] = (
+        "geolocation=(), microphone=(self), camera=()"
+    )
 
     # Add rate limit headers if available
     if hasattr(request.state, "rate_limit_remaining"):
@@ -185,9 +193,6 @@ async def auth_gateway(request: Request, call_next):
     request.state.username = identity.get("username")
     request.state.user_id = identity.get("user_id")
 
-    print(request.state.user_id)
-    print(request.state.username)
-
     return await call_next(request)
 
 
@@ -206,6 +211,22 @@ app.include_router(
 )
 app.include_router(agent.router, prefix=settings.API_V1_STR, tags=["Agent"])
 app.include_router(diet.router, prefix=settings.API_V1_STR, tags=["Diet"])
+app.include_router(recipes.router, prefix=settings.API_V1_STR, tags=["Recipes"])
+app.include_router(pantry.router, prefix=settings.API_V1_STR, tags=["Pantry"])
+app.include_router(
+    nutrition.router, prefix=settings.API_V1_STR, tags=["Nutrition"]
+)
+app.include_router(family.router, prefix=settings.API_V1_STR, tags=["Family"])
+app.include_router(
+    semantic_metrics.router,
+    prefix=settings.API_V1_STR,
+    tags=["Semantic Metrics"],
+)
+app.include_router(
+    constraints.router,
+    prefix=settings.API_V1_STR,
+    tags=["Constraints"],
+)
 
 
 @app.get("/")
