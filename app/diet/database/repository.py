@@ -148,6 +148,51 @@ class DietRepository:
             await session.refresh(new_meal)
             return new_meal
 
+    async def delete_unlocked_week_meals(
+        self, user_id: str, week_start_date: date
+    ) -> int:
+        week_end_date = week_start_date + timedelta(days=6)
+        async with get_session_context() as session:
+            stmt = delete(DietPlanMealModel).where(
+                and_(
+                    DietPlanMealModel.user_id == user_id,
+                    DietPlanMealModel.plan_date >= week_start_date,
+                    DietPlanMealModel.plan_date <= week_end_date,
+                    DietPlanMealModel.locked.is_(False),
+                    DietPlanMealModel.status.notin_(("eaten", "skipped")),
+                )
+            )
+            result = await session.execute(stmt)
+            return int(result.rowcount or 0)
+
+    async def add_meals_batch(
+        self, user_id: str, meals: List[dict]
+    ) -> List[DietPlanMealModel]:
+        async with get_session_context() as session:
+            records = []
+            for meal in meals:
+                record = DietPlanMealModel(
+                    user_id=user_id,
+                    plan_date=date.fromisoformat(str(meal["plan_date"])),
+                    meal_type=str(meal["meal_type"]),
+                    dishes=meal.get("dishes") or [],
+                    total_calories=meal.get("total_calories"),
+                    total_protein=meal.get("total_protein"),
+                    total_fat=meal.get("total_fat"),
+                    total_carbs=meal.get("total_carbs"),
+                    notes=meal.get("notes"),
+                    status=meal.get("status") or "planned",
+                    locked=bool(meal.get("locked", False)),
+                    generation_batch_id=meal.get("generation_batch_id"),
+                    servings=meal.get("servings"),
+                )
+                session.add(record)
+                records.append(record)
+            await session.flush()
+            for record in records:
+                await session.refresh(record)
+            return records
+
     # ==================== 饮食记录（食品项） ====================
 
     async def create_log_items(
@@ -180,6 +225,8 @@ class DietRepository:
                     carbs=item.get("carbs"),
                     source=item.get("source") or DataSource.MANUAL.value,
                     confidence_score=item.get("confidence_score"),
+                    nutrition_source=item.get("nutrition_source"),
+                    nutrition_confidence=item.get("nutrition_confidence"),
                     notes=notes,
                 )
                 session.add(log_item)

@@ -105,6 +105,9 @@ async def init_db() -> None:
     """Initialize database schema (create tables if not exist)."""
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    from app.database.migrations import apply_schema_migrations
+
+    await apply_schema_migrations(_engine)
     logger.info("Database tables initialized.")
 
 
