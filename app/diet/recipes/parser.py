@@ -7,6 +7,12 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from app.diet.nutrition.service import estimate_nutrition
+from app.diet.recipes.images import (
+    RecipeImage,
+    collect_recipe_images,
+    first_image_in_line,
+    strip_markdown_images,
+)
 from app.knowledge.ontology import (
     allergens_for,
     diet_tags_for,
@@ -106,12 +112,14 @@ class ParsedStep:
     index: int
     text: str
     timer_seconds: Optional[int] = None
+    image_url: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "index": self.index,
             "text": self.text,
             "timer_seconds": self.timer_seconds,
+            "image_url": self.image_url,
         }
 
 
@@ -132,6 +140,8 @@ class ParsedRecipe:
     total_minutes: Optional[float] = None
     warnings: list[str] = field(default_factory=list)
     raw_content: str = ""
+    image_url: Optional[str] = None
+    images: list[RecipeImage] = field(default_factory=list)
 
     def to_dict(self, servings: Optional[float] = None, unit_system: str = "metric") -> dict[str, Any]:
         target = float(servings) if servings and servings > 0 else self.servings
@@ -156,6 +166,8 @@ class ParsedRecipe:
             "warnings": list(scaled.warnings),
             "raw_content": self.raw_content,
             "unit_system": unit_system,
+            "image_url": self.image_url,
+            "images": [image.to_dict() for image in self.images],
         }
         return payload
 
@@ -234,19 +246,32 @@ def _section_lines(content: str, pattern: re.Pattern[str]) -> tuple[list[str], b
     return [line for line in collected if line.strip()], bool(matches)
 
 
-def _extract_steps(content: str) -> list[ParsedStep]:
+def _extract_steps(
+    content: str,
+    source: str = "",
+    *,
+    image_root: str | None = None,
+) -> list[ParsedStep]:
     lines, found = _section_lines(content, _STEP_HEADING)
     if not found:
         lines = [line for line in content.splitlines() if line.strip()]
 
     steps: list[ParsedStep] = []
     buffer: list[str] = []
+    pending_image: Optional[str] = None
+
+    def resolve(line: str) -> Optional[str]:
+        return first_image_in_line(line, source, image_root=image_root)
 
     def flush() -> None:
+        nonlocal pending_image
         if not buffer:
+            pending_image = None
             return
         text = " ".join(part.strip() for part in buffer).strip()
         buffer.clear()
+        image_url = pending_image
+        pending_image = None
         if not text or text.startswith("#"):
             return
         timer = None
@@ -260,18 +285,45 @@ def _extract_steps(content: str) -> list[ParsedStep]:
                 timer = int(amount)
             else:
                 timer = int(amount * 60)
-        steps.append(ParsedStep(index=len(steps) + 1, text=text, timer_seconds=timer))
+        steps.append(
+            ParsedStep(
+                index=len(steps) + 1,
+                text=text,
+                timer_seconds=timer,
+                image_url=image_url,
+            )
+        )
 
     for line in lines:
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             flush()
             continue
+
+        image_url = resolve(stripped)
+        text = strip_markdown_images(stripped).strip()
+        text = _LIST_MARKER.sub("", text).strip()
+
+        if not text:
+            # Standalone image lines illustrate the previous step in HowToCook
+            # (e.g. "4. ![改刀](./改刀.jpg)").  Attach instead of creating a
+            # step whose entire text is Markdown image syntax.
+            if image_url:
+                if steps and not steps[-1].image_url:
+                    steps[-1].image_url = image_url
+                elif buffer and not pending_image:
+                    pending_image = image_url
+            continue
+
         if re.match(r"^\s*(?:[-*+]|\d+[.)、])\s+", line):
             flush()
-            buffer.append(_LIST_MARKER.sub("", line).strip())
+            buffer.append(text)
+            if image_url:
+                pending_image = image_url
         else:
-            buffer.append(stripped)
+            buffer.append(text)
+            if image_url and not pending_image:
+                pending_image = image_url
     flush()
     return steps
 
@@ -279,8 +331,12 @@ def _extract_steps(content: str) -> list[ParsedStep]:
 def _extract_description(content: str) -> str:
     for line in content.splitlines():
         stripped = line.strip()
-        if stripped and not stripped.startswith("#") and not _LIST_MARKER.match(stripped):
-            return stripped[:300]
+        if not stripped or stripped.startswith(("#", ">", "<!--")):
+            continue
+        stripped = strip_markdown_images(stripped).strip()
+        if not stripped or _LIST_MARKER.match(stripped):
+            continue
+        return stripped[:300]
     return ""
 
 
@@ -310,6 +366,7 @@ def parse_recipe_document(
     category: str = "",
     difficulty: str = "",
     source: str = "",
+    image_root: str | None = None,
 ) -> ParsedRecipe:
     """Parse a Markdown recipe; never raises on malformed content."""
     safe_content = content if isinstance(content, str) else ""
@@ -339,9 +396,13 @@ def parse_recipe_document(
     elif not found_section:
         warnings.append("原料章节未闭合，解析结果可能不完整")
 
-    steps = _extract_steps(safe_content)
+    steps = _extract_steps(safe_content, source, image_root=image_root)
     if not steps:
         warnings.append("未识别到烹饪步骤，请查看原文")
+
+    images, cover_image = collect_recipe_images(
+        safe_content, source, image_root=image_root
+    )
 
     names = [item.name for item in ingredients if item.name]
     nutrition_items = [
@@ -375,6 +436,8 @@ def parse_recipe_document(
         total_minutes=_estimate_total_minutes(steps),
         warnings=warnings,
         raw_content=safe_content,
+        image_url=cover_image,
+        images=images,
     )
     return recipe
 
@@ -421,6 +484,8 @@ def scale_recipe(recipe: ParsedRecipe, target_servings: float) -> ParsedRecipe:
         total_minutes=recipe.total_minutes,
         warnings=list(recipe.warnings),
         raw_content=recipe.raw_content,
+        image_url=recipe.image_url,
+        images=list(recipe.images),
     )
 
 

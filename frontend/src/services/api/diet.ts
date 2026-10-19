@@ -22,6 +22,11 @@ import type {
   Recipe,
   RecipeReview,
   RecipeReviewSummary,
+  RecipeImportResult,
+  RecipeLibraryResponse,
+  RecipeLibraryItem,
+  RecipeSortKey,
+  RecipeFeedbackFilter,
   PantryItem,
   ShoppingListItem,
   FamilyMember,
@@ -377,6 +382,64 @@ export async function getRecipeRecommendations(
   return apiGet(withQuery('/recipes/recommendations', { limit }), token);
 }
 
+export interface RecipeLibraryParams {
+  category?: string;
+  difficulty?: string;
+  ingredient?: string;
+  feedback?: RecipeFeedbackFilter;
+  sort?: RecipeSortKey;
+  has_step_images?: boolean;
+  q?: string;
+  offset?: number;
+  limit?: number;
+}
+
+export async function listRecipeLibrary(
+  token: string,
+  params: RecipeLibraryParams = {}
+): Promise<RecipeLibraryResponse> {
+  return apiGet(
+    withQuery('/recipes/library', {
+      category: params.category,
+      difficulty: params.difficulty,
+      ingredient: params.ingredient,
+      feedback: params.feedback,
+      sort: params.sort,
+      has_step_images:
+        params.has_step_images === undefined ? undefined : params.has_step_images ? 'true' : 'false',
+      q: params.q,
+      offset: params.offset,
+      limit: params.limit,
+    }),
+    token
+  );
+}
+
+export async function getSimilarRecipes(
+  token: string,
+  recipeId: string,
+  limit = 6
+): Promise<{ items: RecipeLibraryItem[]; count: number }> {
+  return apiGet(withQuery(`/recipes/${recipeId}/similar`, { limit }), token);
+}
+
+export async function toggleRecipeFeedback(
+  token: string,
+  recipeId: string,
+  signal: 'want' | 'favorite' | 'cooked',
+  active: boolean
+): Promise<void> {
+  // The feedback endpoint appends a signal; toggling "off" is approximated by
+  // recording the opposite-direction signal (skip) — the library's feedback
+  // filter only looks at the latest stateful signals, so a new record with the
+  // same signal re-confirms it. For a true toggle-off we send 'skip'.
+  if (active) {
+    await apiPost(`/recipes/${recipeId}/feedback`, { signal }, token);
+  } else {
+    await apiPost(`/recipes/${recipeId}/feedback`, { signal: 'skip' }, token);
+  }
+}
+
 export async function getRecipe(
   token: string,
   recipeId: string,
@@ -389,6 +452,20 @@ export async function getRecipe(
     }),
     token
   );
+}
+
+export async function importRecipeFromUrl(
+  token: string,
+  url: string
+): Promise<RecipeImportResult> {
+  return apiPost<RecipeImportResult, { url: string }>('/recipes/import/url', { url }, token);
+}
+
+export async function importRecipeFromImage(
+  token: string,
+  data: { image_base64: string; mime_type: string; filename?: string }
+): Promise<RecipeImportResult> {
+  return apiPost<RecipeImportResult, typeof data>('/recipes/import/image', data, token);
 }
 
 export async function addRecipeFeedback(

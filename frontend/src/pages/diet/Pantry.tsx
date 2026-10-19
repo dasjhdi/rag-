@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Loader2, Package, Plus, ShoppingCart, Trash2 } from 'lucide-react';
+import { Loader2, Package, Plus, ShoppingCart, Trash2 } from 'lucide-react';
 import { useAuth } from '../../contexts';
 import {
   addPantryItem,
@@ -14,6 +14,7 @@ import {
   updateShoppingItem,
 } from '../../services/api/diet';
 import type { CookableRecipe, PantryItem, ShoppingListItem } from '../../types/diet';
+import { BackButton } from '../../components/common';
 
 function currentWeekStart(): string {
   const today = new Date();
@@ -135,23 +136,18 @@ export default function PantryPage() {
       <div className="max-w-6xl mx-auto space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <Link
-              to="/diet"
-              className="inline-flex items-center gap-1 text-sm text-amber-600 dark:text-amber-300 hover:underline"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              返回饮食管理
-            </Link>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-2">
+            <BackButton fallbackTo="/diet" label="返回饮食管理" />
+            <div className="ch-eyebrow mt-4">Pantry & Shopping</div>
+            <h1 className="ch-display text-[2rem] text-ink-900 dark:text-cream-50 mt-1">
               库存与购物清单
             </h1>
-            <p className="text-sm text-gray-500 mt-1">
+            <p className="text-sm text-ink-500 dark:text-ink-300 mt-1.5">
               按本周计划聚合食材，自动扣除库存并提示临期食材
             </p>
           </div>
           <button
             onClick={createShoppingList}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 text-white text-sm hover:bg-amber-600"
+            className="ch-btn ch-btn-primary"
           >
             <ShoppingCart className="w-4 h-4" />
             生成本周购物清单
@@ -169,9 +165,9 @@ export default function PantryPage() {
           </div>
         )}
 
-        <section className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5">
+        <section className="ch-card p-5">
           <div className="flex items-center gap-2">
-            <Package className="w-5 h-5 text-amber-500" />
+            <Package className="w-5 h-5 text-ember-500" />
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">我的库存</h2>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-5 gap-2 mt-4">
@@ -203,7 +199,7 @@ export default function PantryPage() {
             />
             <button
               onClick={addItem}
-              className="inline-flex items-center justify-center gap-1 rounded-xl bg-amber-500 text-white text-sm"
+              className="inline-flex items-center justify-center gap-1 rounded-xl bg-ember-500 text-white text-sm"
             >
               <Plus className="w-4 h-4" />
               添加
@@ -212,7 +208,7 @@ export default function PantryPage() {
 
           {isLoading ? (
             <div className="flex justify-center py-10">
-              <Loader2 className="w-6 h-6 animate-spin text-amber-500" />
+              <Loader2 className="w-6 h-6 animate-spin text-ember-500" />
             </div>
           ) : items.length === 0 ? (
             <div className="text-sm text-gray-400 mt-4">库存为空，先添加一些食材吧。</div>
@@ -255,7 +251,7 @@ export default function PantryPage() {
         </section>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <section className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5">
+          <section className="ch-card p-5">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">临期提醒</h2>
             {expiring.length === 0 ? (
               <div className="text-sm text-gray-400 mt-3">未来 3 天没有临期食材</div>
@@ -267,7 +263,7 @@ export default function PantryPage() {
                     className="flex items-center justify-between rounded-xl bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-sm"
                   >
                     <span className="text-gray-800 dark:text-gray-100">{item.name}</span>
-                    <span className="text-amber-700 dark:text-amber-300">
+                    <span className="text-amber-700 dark:text-ember-300">
                       {item.expires_on} · {item.quantity}{item.unit}
                     </span>
                   </div>
@@ -276,7 +272,7 @@ export default function PantryPage() {
             )}
           </section>
 
-          <section className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5">
+          <section className="ch-card p-5">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">现有食材能做</h2>
             <div className="mt-3 space-y-2">
               {cookable.length === 0 ? (
@@ -290,7 +286,7 @@ export default function PantryPage() {
                   >
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-gray-800 dark:text-gray-100">{item.title}</span>
-                      <span className="text-xs text-amber-600 dark:text-amber-300">
+                      <span className="text-xs text-ember-600 dark:text-ember-300">
                         {Math.round(item.coverage * 100)}%
                       </span>
                     </div>
@@ -306,7 +302,7 @@ export default function PantryPage() {
           </section>
         </div>
 
-        <section className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5">
+        <section className="ch-card p-5">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
               本周购物清单

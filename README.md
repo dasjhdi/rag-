@@ -141,6 +141,17 @@ CookHero 面向厨房新手、健身/减脂/控糖人群、健康饮食倡导者
 
 > 📖 详细安全架构请参阅 [安全策略文档](docs/SECURITY.md)
 
+### 11. 菜谱图片与内容导入
+- **图片上屏**：HowToCook 语料中的菜谱图会自动出现在搜索卡片、菜谱详情和烹饪步骤中；卡片使用缩略图接口（`/media/recipes/...?w=640`）降低流量。
+- **缺图补齐**：运行 `python -m scripts.fetch_recipe_images` 可为没有成品图的菜谱抓取匹配图片，图片与来源记录在 `data/recipe_images/`，不修改原始 Markdown。当前语料 373 道菜已 100% 有图（补图 195 张，全部经过视觉校验或人工复核）。详见 [菜谱补图说明](docs/RECIPE_IMAGES.md)。
+- **链接导入**：粘贴公开菜谱网页链接，自动解析 schema.org JSON-LD（兼容无 JSON-LD 的 DOM 回退）、下载封面图并写入个人知识库；导入后即可搜索、加入计划和参与 RAG 检索。
+- **图片识别导入**：上传菜谱照片，调用视觉模型提取菜名、原料、步骤、份量与耗时，同样保存为个人菜谱。
+- **安全边界**：导入仅允许公网 http/https 地址，拒绝内网/本机/云元数据地址；图片只暴露白名单后缀，路径穿越会被拒绝。
+- **相关接口**：
+  - `POST /api/v1/recipes/import/url`
+  - `POST /api/v1/recipes/import/image`
+  - `GET /media/recipes/{path}`、`GET /media/imports/recipes/{path}`（支持 `?w=` 缩略图）
+
 ---
 
 ## 🚀 快速开始
@@ -197,6 +208,9 @@ CookHero 面向厨房新手、健身/减脂/控糖人群、健康饮食倡导者
    npm install
    npm run dev
    ```
+
+   > 图片通过 `/media` 提供。开发模式下 Vite 已配置代理；如果前端与后端不同源部署，
+   > 在 `frontend/.env` 中设置 `VITE_MEDIA_BASE=https://your-api-host` 即可。
 
 6. **访问应用**
    - 前端：http://localhost:5173

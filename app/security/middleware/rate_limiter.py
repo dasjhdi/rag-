@@ -142,8 +142,16 @@ class RateLimiter:
 
         path = request.url.path
 
-        # Skip rate limiting for docs and health endpoints
-        if path.startswith("/docs") or path.startswith("/openapi") or path == "/":
+        # Skip rate limiting for docs, health endpoints and public media assets.
+        # A recipe grid can request dozens of thumbnails in one page load, which
+        # must not consume the API's request budget.
+        if (
+            path.startswith("/docs")
+            or path.startswith("/openapi")
+            or path.startswith("/media")
+            or path.startswith("/static")
+            or path == "/"
+        ):
             return None
 
         # Get appropriate limit for this endpoint

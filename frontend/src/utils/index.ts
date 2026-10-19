@@ -2,8 +2,24 @@
  * Utility functions
  */
 
+import { MEDIA_BASE } from '../constants';
+
 export * from './date';
 export * from './storage';
+
+/**
+ * Resolve a backend media path (e.g. /media/recipes/...) for <img src>.
+ * When `width` is provided, ask the backend for a cached thumbnail.
+ */
+export function resolveMediaUrl(url?: string | null, width?: number): string | undefined {
+  if (!url) return undefined;
+  if (/^(?:https?:)?\/\//i.test(url) || url.startsWith('data:') || url.startsWith('blob:')) {
+    return url;
+  }
+  const base = `${MEDIA_BASE}${url.startsWith('/') ? '' : '/'}${url}`;
+  if (!width || !base.includes('/media/')) return base;
+  return `${base}${base.includes('?') ? '&' : '?'}w=${width}`;
+}
 
 /**
  * Generate a unique ID for messages

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import {
-  ArrowLeft,
   ChevronLeft,
   ChevronRight,
   Loader2,
@@ -12,6 +11,7 @@ import {
 import { useAuth } from '../../contexts';
 import { getRecipe } from '../../services/api/diet';
 import type { Recipe } from '../../types/diet';
+import { BackButton, RecipeImage } from '../../components/common';
 
 type WakeLockSentinel = { release: () => Promise<void> };
 
@@ -134,13 +134,11 @@ export default function CookingModePage() {
     <div className="flex-1 overflow-auto bg-gray-950 text-white p-4 md:p-8">
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center justify-between gap-4">
-          <Link
-            to={`/recipes/${recipe.recipe_id}`}
-            className="inline-flex items-center gap-1 text-sm text-gray-300 hover:text-white"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            退出烹饪模式
-          </Link>
+          <BackButton
+            fallbackTo={`/recipes/${recipe.recipe_id}`}
+            label="退出烹饪模式"
+            className="inline-flex items-center gap-1 text-sm text-gray-300 hover:text-white transition-colors"
+          />
           <div className="text-sm text-gray-400">
             {recipe.title} · {recipe.servings} 人份
           </div>
@@ -168,10 +166,20 @@ export default function CookingModePage() {
               )}
             </div>
 
-            <div className="mt-4 min-h-[40vh] rounded-3xl bg-gray-900 border border-gray-800 p-6 md:p-10 flex items-center">
+            <div className="mt-4 min-h-[40vh] rounded-3xl bg-gray-900 border border-gray-800 p-6 md:p-10 flex flex-col justify-center">
               <p className="text-2xl md:text-4xl leading-relaxed font-medium">
                 {currentStep.text}
               </p>
+              {currentStep.image_url && (
+                <RecipeImage
+                  src={currentStep.image_url}
+                  alt={`步骤 ${currentStep.index}`}
+                  className="mt-6 aspect-[16/9] max-h-72 w-full rounded-2xl border border-white/10"
+                  imageClassName="object-contain"
+                  loading="eager"
+                  width={1000}
+                />
+              )}
             </div>
 
             <div className="mt-6 flex flex-wrap items-center gap-3">

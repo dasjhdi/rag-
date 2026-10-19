@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
-  ArrowLeft,
   ChefHat,
   Clock,
   Flame,
@@ -17,9 +16,13 @@ import {
   deleteRecipeReview,
   getRecipe,
   getRecipeReviews,
+  getSimilarRecipes,
   upsertRecipeReview,
 } from '../../services/api/diet';
-import type { Recipe, RecipeReviewSummary } from '../../types/diet';
+import type { Recipe, RecipeLibraryItem, RecipeReviewSummary } from '../../types/diet';
+import { cleanRecipeText } from '../../utils/recipeText';
+import { resolveMediaUrl } from '../../utils';
+import { BackButton, RecipeImage } from '../../components/common';
 
 export default function RecipeDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -33,6 +36,8 @@ export default function RecipeDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [activeImage, setActiveImage] = useState<string | undefined>();
+  const [similar, setSimilar] = useState<RecipeLibraryItem[]>([]);
 
   const loadRecipe = useCallback(async () => {
     if (!token || !id) return;
@@ -60,6 +65,16 @@ export default function RecipeDetailPage() {
     }
   }, [token, id]);
 
+  const loadSimilar = useCallback(async () => {
+    if (!token || !id) return;
+    try {
+      const res = await getSimilarRecipes(token, id, 8);
+      setSimilar(res.items);
+    } catch {
+      setSimilar([]);
+    }
+  }, [token, id]);
+
   useEffect(() => {
     loadRecipe();
   }, [loadRecipe]);
@@ -67,6 +82,14 @@ export default function RecipeDetailPage() {
   useEffect(() => {
     loadReviews();
   }, [loadReviews]);
+
+  useEffect(() => {
+    loadSimilar();
+  }, [loadSimilar]);
+
+  useEffect(() => {
+    setActiveImage(recipe?.image_url || undefined);
+  }, [recipe?.recipe_id, recipe?.image_url]);
 
   const sendFeedback = async (signal: string) => {
     if (!token || !id) return;
@@ -104,7 +127,7 @@ export default function RecipeDetailPage() {
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-ember-500" />
       </div>
     );
   }
@@ -123,34 +146,78 @@ export default function RecipeDetailPage() {
     return null;
   }
 
+  const gallery =
+    recipe.images && recipe.images.length > 0
+      ? recipe.images
+      : recipe.image_url
+        ? [{ url: recipe.image_url, alt: recipe.title }]
+        : [];
+
   return (
     <div className="flex-1 overflow-auto p-4 md:p-6">
       <div className="max-w-5xl mx-auto space-y-6">
         <div>
-          <Link
-            to="/recipes"
-            className="inline-flex items-center gap-1 text-sm text-amber-600 dark:text-amber-300 hover:underline"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            返回菜谱搜索
-          </Link>
+          <BackButton fallbackTo="/recipes" label="返回菜谱" />
           <div className="flex flex-wrap items-start justify-between gap-4 mt-3">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
-                {recipe.title}
+            <div className="min-w-0 flex-1">
+              <h1 className="ch-display text-[2.2rem] text-ink-900 dark:text-cream-50">
+                {cleanRecipeText(recipe.title)}
               </h1>
-              <p className="text-sm text-gray-500 mt-1">
-                {recipe.description || recipe.category || '结构化菜谱'}
-              </p>
+              {cleanRecipeText(recipe.description || recipe.category) && (
+                <p className="text-sm text-ink-500 dark:text-ink-300 mt-1">
+                  {cleanRecipeText(recipe.description || recipe.category)}
+                </p>
+              )}
             </div>
             <Link
               to={`/recipes/${recipe.recipe_id}/cook?servings=${servings}`}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500 text-white hover:bg-amber-600"
+              className="ch-btn ch-btn-primary !py-2.5"
             >
               <ChefHat className="w-5 h-5" />
               开始烹饪
             </Link>
           </div>
+        </div>
+
+        <div className="space-y-3">
+          <RecipeImage
+            src={activeImage || recipe.image_url}
+            title={recipe.title}
+            alt={recipe.title}
+            className="aspect-[16/7] rounded-3xl border border-cream-300/60 dark:border-white/10"
+            loading="eager"
+            width={1200}
+          />
+          {gallery.length > 1 && (
+            <div className="scrollbar-hide flex gap-2 overflow-x-auto pb-1">
+              {gallery.map(image => {
+                const src = resolveMediaUrl(image.url, 240);
+                const selected = (activeImage || recipe.image_url) === image.url;
+                return (
+                  <button
+                    key={image.url}
+                    type="button"
+                    onClick={() => setActiveImage(image.url)}
+                    className={`relative h-16 w-24 flex-none overflow-hidden rounded-xl border-2 transition-all ${
+                      selected
+                        ? 'border-ember-500 opacity-100'
+                        : 'border-transparent opacity-65 hover:opacity-100'
+                    }`}
+                    title={image.alt || recipe.title}
+                  >
+                    {src ? (
+                      <img
+                        src={src}
+                        alt={image.alt || recipe.title}
+                        loading="lazy"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {message && (
@@ -165,7 +232,7 @@ export default function RecipeDetailPage() {
         )}
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-4">
+          <div className="ch-card p-4">
             <div className="flex items-center gap-2 text-gray-500 text-xs">
               <Users className="w-4 h-4" /> 份量
             </div>
@@ -187,7 +254,7 @@ export default function RecipeDetailPage() {
               </button>
             </div>
           </div>
-          <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-4">
+          <div className="ch-card p-4">
             <div className="flex items-center gap-2 text-gray-500 text-xs">
               <Clock className="w-4 h-4" /> 耗时
             </div>
@@ -195,15 +262,17 @@ export default function RecipeDetailPage() {
               {recipe.total_minutes ? `${recipe.total_minutes} 分钟` : '未标注'}
             </div>
           </div>
-          <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-4">
+          <div className="ch-card p-4">
             <div className="flex items-center gap-2 text-gray-500 text-xs">
               <Flame className="w-4 h-4" /> 热量
             </div>
             <div className="mt-2 font-semibold text-gray-900 dark:text-gray-100">
-              {Math.round(recipe.nutrition?.totals?.calories ?? 0)} kcal
+              {(recipe.nutrition?.totals?.calories ?? 0) > 0
+                ? `${Math.round(recipe.nutrition?.totals?.calories ?? 0)} kcal`
+                : '热量未知'}
             </div>
           </div>
-          <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-4">
+          <div className="ch-card p-4">
             <div className="text-gray-500 text-xs">单位制</div>
             <select
               value={unitSystem}
@@ -288,6 +357,14 @@ export default function RecipeDetailPage() {
                         {Math.round(step.timer_seconds / 60)} 分钟
                       </span>
                     )}
+                    {step.image_url && (
+                      <RecipeImage
+                        src={step.image_url}
+                        alt={`步骤 ${step.index}`}
+                        className="mt-3 aspect-[16/9] max-h-56 w-full rounded-xl"
+                        width={800}
+                      />
+                    )}
                   </div>
                 </li>
               ))}
@@ -301,6 +378,48 @@ export default function RecipeDetailPage() {
             )}
           </section>
         </div>
+
+        {similar.length > 0 && (
+          <section className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">相似菜谱</h2>
+              <span className="text-xs text-gray-400">基于食材重合度推荐</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              {similar.map(item => (
+                <Link
+                  key={item.recipe_id}
+                  to={`/recipes/${item.recipe_id}`}
+                  className="group flex flex-col overflow-hidden rounded-xl border border-gray-100 dark:border-gray-800 hover:border-ember-300 dark:hover:border-ember-700 transition-colors"
+                >
+                  <RecipeImage
+                    src={item.image_url}
+                    title={item.title}
+                    alt={item.title}
+                    className="aspect-[4/3]"
+                    imageClassName="group-hover:scale-[1.04] transition-transform duration-500"
+                    width={400}
+                  />
+                  <div className="p-2.5">
+                    <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 line-clamp-1">
+                      {cleanRecipeText(item.title)}
+                    </h3>
+                    <div className="flex items-center gap-2 mt-1 text-[11px] text-gray-500">
+                      <span className="inline-flex items-center gap-0.5">
+                        <Flame className="w-3 h-3" />
+                        {item.calories ? `${item.calories} kcal` : '热量未知'}
+                      </span>
+                      <span className="inline-flex items-center gap-0.5">
+                        <Clock className="w-3 h-3" />
+                        {item.total_minutes ? `${item.total_minutes} 分` : '时间未知'}
+                      </span>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
 
         <section className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">

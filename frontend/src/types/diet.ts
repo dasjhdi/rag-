@@ -244,6 +244,12 @@ export interface RecipeStep {
   index: number;
   text: string;
   timer_seconds?: number | null;
+  image_url?: string | null;
+}
+
+export interface RecipeImage {
+  url: string;
+  alt?: string;
 }
 
 export interface NutritionTotals {
@@ -276,6 +282,60 @@ export interface Recipe {
   warnings: string[];
   raw_content: string;
   unit_system: string;
+  image_url?: string | null;
+  images?: RecipeImage[];
+}
+
+/** Lightweight recipe card used by the library browser. */
+export interface RecipeLibraryItem {
+  recipe_id: string;
+  title: string;
+  description?: string;
+  category?: string;
+  difficulty?: string;
+  total_minutes?: number | null;
+  calories?: number | null;
+  image_url?: string | null;
+  images_count: number;
+  ingredients_count: number;
+  main_ingredients: string[];
+  has_step_images: boolean;
+  diet_tags: string[];
+  allergens: string[];
+  feedback: string[]; // subset of want/favorite/cooked
+}
+
+export interface RecipeFacet {
+  value: string;
+  label: string;
+  count: number;
+}
+
+export interface RecipeLibraryResponse {
+  items: RecipeLibraryItem[];
+  total: number;
+  offset: number;
+  limit: number;
+  categories: RecipeFacet[];
+  difficulties: RecipeFacet[];
+  ingredients: RecipeFacet[];
+  minutes_buckets: RecipeFacet[];
+}
+
+export type RecipeSortKey = 'name' | 'minutes' | 'calories' | 'ingredients';
+export type RecipeFeedbackFilter = 'want' | 'favorite' | 'cooked';
+
+export interface RecipeImportResult {
+  document: {
+    id: string;
+    dish_name: string;
+    category: string;
+    difficulty: string;
+    image_url?: string | null;
+  };
+  recipe: Recipe;
+  source_url?: string;
+  imported_from: 'url' | 'image';
 }
 
 export interface NutritionCoverage {

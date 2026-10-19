@@ -30,6 +30,7 @@ import {
   User,
   Package,
   Search,
+  BookOpen,
 } from 'lucide-react';
 import { useAuth } from '../../contexts';
 import {
@@ -1310,90 +1311,101 @@ export default function DietManagementPage() {
     <div className="flex-1 overflow-auto p-4 md:p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
-        <div className="rounded-3xl border border-amber-100/70 dark:border-amber-900/40 bg-gradient-to-br from-orange-50 via-white to-amber-50 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800 p-6 shadow-sm">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+        <div className="ch-hero p-6 md:p-7">
+          <div className="relative z-10 flex flex-col xl:flex-row xl:items-end xl:justify-between gap-6">
             <div>
-              <div className="flex items-center gap-3 text-amber-700 dark:text-amber-200">
-                <div className="p-2 rounded-2xl bg-amber-100/70 dark:bg-amber-900/40">
-                  <Calendar className="w-6 h-6" />
-                </div>
-                <div>
-                  <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                    饮食管理
-                  </h1>
-                  <p className="text-sm text-amber-700/80 dark:text-amber-200/80 mt-1">
-                    结合计划与实际，追踪每周营养执行度
-                  </p>
-                </div>
+              <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-cream-100/45">
+                <Calendar className="w-3.5 h-3.5 text-ember-300" />
+                Weekly Kitchen
+              </div>
+              <h1 className="ch-display mt-3 text-3xl md:text-[2.4rem] text-cream-50">
+                饮食管理
+              </h1>
+              <p className="mt-2 text-sm text-cream-100/55">
+                结合计划与实际，追踪每周营养执行度
+              </p>
+
+              <div className="mt-5 flex flex-wrap items-center gap-2">
+                <Link
+                  to="/diet/profile"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/10 bg-white/[0.05] text-xs text-cream-100/75 hover:bg-white/[0.1] hover:text-cream-50 transition-colors"
+                >
+                  <User className="w-3.5 h-3.5" />
+                  档案
+                </Link>
+                <Link
+                  to="/diet/pantry"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/10 bg-white/[0.05] text-xs text-cream-100/75 hover:bg-white/[0.1] hover:text-cream-50 transition-colors"
+                >
+                  <Package className="w-3.5 h-3.5" />
+                  库存
+                </Link>
+                <Link
+                  to="/recipes/library"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/10 bg-white/[0.05] text-xs text-cream-100/75 hover:bg-white/[0.1] hover:text-cream-50 transition-colors"
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  图鉴
+                </Link>
+                <Link
+                  to="/recipes"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/10 bg-white/[0.05] text-xs text-cream-100/75 hover:bg-white/[0.1] hover:text-cream-50 transition-colors"
+                >
+                  <Search className="w-3.5 h-3.5" />
+                  菜谱
+                </Link>
               </div>
             </div>
 
             {/* Week Navigation */}
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                onClick={goToPreviousWeek}
-                className="p-2 rounded-xl border border-amber-200/60 dark:border-amber-900/40 hover:bg-amber-100/70 dark:hover:bg-amber-900/20 transition-colors"
-              >
-                <ChevronLeft className="w-5 h-5" />
-              </button>
-              <div className="text-center min-w-[200px]">
-                <div className="font-semibold text-gray-900 dark:text-gray-100">
-                  {formatDateShort(currentWeekStart)} - {formatDateShort(addDays(currentWeekStart, 6))}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.05] p-1">
+                <button
+                  onClick={goToPreviousWeek}
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-cream-100/70 hover:bg-white/10 hover:text-cream-50 transition-colors"
+                  aria-label="上一周"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <div className="text-center px-2 min-w-[132px]">
+                  <div className="text-[13px] font-semibold text-cream-50 tabular-nums">
+                    {formatDateShort(currentWeekStart)} - {formatDateShort(addDays(currentWeekStart, 6))}
+                  </div>
+                  {!isCurrentWeek && (
+                    <button
+                      onClick={goToCurrentWeek}
+                      className="text-[10px] text-ember-300 hover:text-ember-200 hover:underline"
+                    >
+                      返回本周
+                    </button>
+                  )}
                 </div>
-                {!isCurrentWeek && (
-                  <button
-                    onClick={goToCurrentWeek}
-                    className="text-xs text-amber-600 dark:text-amber-300 hover:underline"
-                  >
-                    返回本周
-                  </button>
-                )}
+                <button
+                  onClick={goToNextWeek}
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-cream-100/70 hover:bg-white/10 hover:text-cream-50 transition-colors"
+                  aria-label="下一周"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
               </div>
-              <button
-                onClick={goToNextWeek}
-                className="p-2 rounded-xl border border-amber-200/60 dark:border-amber-900/40 hover:bg-amber-100/70 dark:hover:bg-amber-900/20 transition-colors"
-              >
-                <ChevronRight className="w-5 h-5" />
-              </button>
+
               <button
                 onClick={handleGeneratePlan}
                 disabled={isGenerating}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 text-white text-sm hover:bg-amber-600 disabled:opacity-50"
+                className="ch-btn ch-btn-primary !py-2"
               >
                 <Sparkles className="w-4 h-4" />
-                {isGenerating ? '生成中...' : '智能生成计划'}
+                {isGenerating ? '生成中…' : '智能生成计划'}
               </button>
               <button
                 onClick={handleTodayView}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-amber-200/60 dark:border-amber-900/40 text-sm hover:bg-amber-100/70 dark:hover:bg-amber-900/20"
+                className="ch-btn !py-2 border border-white/10 bg-white/[0.05] text-cream-100/80 hover:bg-white/[0.1] hover:text-cream-50"
               >
                 <Eye className="w-4 h-4" />
                 今日视图
               </button>
-              <Link
-                to="/diet/profile"
-                className="inline-flex items-center gap-1 px-3 py-2 rounded-xl border border-amber-200/60 dark:border-amber-900/40 text-sm hover:bg-amber-100/70 dark:hover:bg-amber-900/20"
-              >
-                <User className="w-4 h-4" />
-                档案
-              </Link>
-              <Link
-                to="/diet/pantry"
-                className="inline-flex items-center gap-1 px-3 py-2 rounded-xl border border-amber-200/60 dark:border-amber-900/40 text-sm hover:bg-amber-100/70 dark:hover:bg-amber-900/20"
-              >
-                <Package className="w-4 h-4" />
-                库存
-              </Link>
-              <Link
-                to="/recipes"
-                className="inline-flex items-center gap-1 px-3 py-2 rounded-xl border border-amber-200/60 dark:border-amber-900/40 text-sm hover:bg-amber-100/70 dark:hover:bg-amber-900/20"
-              >
-                <Search className="w-4 h-4" />
-                菜谱
-              </Link>
             </div>
           </div>
-
         </div>
 
         {/* Error */}

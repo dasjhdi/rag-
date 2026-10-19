@@ -29,6 +29,7 @@ from app.services.rag_service import rag_service_instance
 from app.security.middleware.rate_limiter import rate_limiter
 from app.security.sanitizer import setup_secure_logging
 from app.security.audit import audit_logger
+from app.api import media as media_api
 import logging
 
 logging.basicConfig(
@@ -175,6 +176,7 @@ async def auth_gateway(request: Request, call_next):
         or path.startswith("/redoc")
         or path.startswith("/openapi")
         or path.startswith("/static")
+        or path.startswith("/media")
     ):
         return await call_next(request)
 
@@ -197,6 +199,7 @@ async def auth_gateway(request: Request, call_next):
 
 
 # Include the API routers
+app.include_router(media_api.router, tags=["Media"])
 app.include_router(
     conversation.router, prefix=settings.API_V1_STR, tags=["Conversation"]
 )

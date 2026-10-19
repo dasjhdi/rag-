@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  ArrowLeft,
   Loader2,
   Plus,
   ShieldAlert,
@@ -23,6 +22,7 @@ import type {
   UpdatePreferenceRequest,
   UserFoodPreference,
 } from '../../types/diet';
+import { BackButton } from '../../components/common';
 
 interface ProfileForm {
   allergies: string;
@@ -231,7 +231,7 @@ export default function DietProfilePage() {
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-ember-500" />
       </div>
     );
   }
@@ -241,30 +241,25 @@ export default function DietProfilePage() {
       <div className="max-w-5xl mx-auto space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <Link
-              to="/diet"
-              className="inline-flex items-center gap-1 text-sm text-amber-600 dark:text-amber-300 hover:underline"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              返回饮食管理
-            </Link>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-2">
+            <BackButton fallbackTo="/diet" label="返回饮食管理" />
+            <div className="ch-eyebrow mt-4">Nutrition Profile</div>
+            <h1 className="ch-display text-[2rem] text-ink-900 dark:text-cream-50 mt-1">
               饮食档案
             </h1>
-            <p className="text-sm text-gray-500 mt-1">
+            <p className="text-sm text-ink-500 dark:text-ink-300 mt-1.5">
               过敏原、饮食限制和营养目标会进入计划生成与对话约束推理
             </p>
           </div>
           <div className="flex gap-2">
             <Link
               to="/diet/pantry"
-              className="px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-sm"
+              className="ch-btn ch-btn-secondary"
             >
               库存与购物清单
             </Link>
             <Link
               to="/recipes"
-              className="px-4 py-2 rounded-xl bg-amber-500 text-white text-sm"
+              className="ch-btn ch-btn-primary"
             >
               搜索菜谱
             </Link>
@@ -282,7 +277,7 @@ export default function DietProfilePage() {
           </div>
         )}
 
-        <section className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5">
+        <section className="ch-card p-5">
           <div className="flex items-center gap-2">
             <ShieldAlert className="w-5 h-5 text-red-500" />
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
@@ -305,7 +300,7 @@ export default function DietProfilePage() {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5">
+        <section className="ch-card p-5">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">基础档案</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
             {([
@@ -440,15 +435,15 @@ export default function DietProfilePage() {
           <button
             onClick={saveProfile}
             disabled={isSaving}
-            className="mt-6 px-5 py-2.5 rounded-xl bg-amber-500 text-white text-sm hover:bg-amber-600 disabled:opacity-50"
+            className="ch-btn ch-btn-primary mt-6"
           >
             {isSaving ? '保存中...' : '保存档案'}
           </button>
         </section>
 
-        <section className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5">
+        <section className="ch-card p-5">
           <div className="flex items-center gap-2">
-            <Users className="w-5 h-5 text-amber-500" />
+            <Users className="w-5 h-5 text-ember-500" />
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
               家庭成员
             </h2>
@@ -496,7 +491,7 @@ export default function DietProfilePage() {
               />
               <button
                 onClick={addMember}
-                className="p-2 rounded-xl bg-amber-500 text-white"
+                className="ch-btn ch-btn-primary !p-2"
                 title="添加家庭成员"
               >
                 <Plus className="w-4 h-4" />

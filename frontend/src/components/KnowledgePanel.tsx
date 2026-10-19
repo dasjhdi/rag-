@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BookOpen, CheckCircle2, ChevronDown, ChevronUp, Edit2, FileText, Loader2, Plus, RefreshCcw, Trash2, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { BookOpen, CheckCircle2, ChevronDown, ChevronUp, Edit2, FileText, Library, Loader2, Plus, RefreshCcw, Trash2, Upload, X } from 'lucide-react';
 import { useAuth } from '../contexts';
 import {
   createPersonalDocument,
@@ -9,6 +10,7 @@ import {
   updatePersonalDocument,
 } from '../services/api';
 import type { MetadataOptions, PersonalDocPayload, PersonalDocument } from '../types';
+import { BackButton } from './common/BackButton';
 
 const INITIAL_FORM: PersonalDocPayload = {
   dish_name: '',
@@ -84,6 +86,35 @@ export default function KnowledgePanel() {
   const [editingDocId, setEditingDocId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // Two-level document filter: data source tab + category chip
+  const [docSource, setDocSource] = useState<'all' | 'recipes' | 'tips' | 'personal'>('all');
+  const [docCategory, setDocCategory] = useState<string | null>(null);
+
+  const filteredDocuments = useMemo(() => {
+    return documents.filter(doc => {
+      if (docSource !== 'all' && doc.data_source !== docSource) return false;
+      if (docCategory && doc.category !== docCategory) return false;
+      return true;
+    });
+  }, [documents, docSource, docCategory]);
+
+  const docCategories = useMemo(() => {
+    const counts: Record<string, number> = {};
+    documents.forEach(doc => {
+      if (docSource !== 'all' && doc.data_source !== docSource) return;
+      counts[doc.category] = (counts[doc.category] || 0) + 1;
+    });
+    return Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([label, count]) => ({ label, count }));
+  }, [documents, docSource]);
+
+  const sourceTabs: { value: 'all' | 'recipes' | 'tips' | 'personal'; label: string }[] = [
+    { value: 'all', label: '全部' },
+    { value: 'recipes', label: '我的菜谱' },
+    { value: 'tips', label: '我的技巧' },
+    { value: 'personal', label: '其他' },
+  ];
 
   const loadOptions = useCallback(async () => {
     if (!token) return;
@@ -218,6 +249,7 @@ export default function KnowledgePanel() {
   return (
     <div className="flex-1 overflow-auto p-4 md:p-6">
       <div className="max-w-7xl mx-auto space-y-6">
+        <BackButton fallbackTo="/chat" label="返回对话" />
         {/* Header */}
         <div className="rounded-3xl border border-amber-100/70 dark:border-amber-900/40 bg-gradient-to-br from-orange-50 via-white to-amber-50 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800 p-6 shadow-sm">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
@@ -232,16 +264,32 @@ export default function KnowledgePanel() {
                 </p>
               </div>
             </div>
-            <button
-              onClick={() => {
-                loadDocuments();
-                loadOptions();
-              }}
-              className="flex items-center gap-2 text-sm px-3 py-2 rounded-xl border border-amber-200/60 dark:border-amber-900/40 text-amber-700 dark:text-amber-200 hover:bg-amber-100/70 dark:hover:bg-amber-900/20 transition-colors"
-            >
-              <RefreshCcw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-              同步知识库
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                to="/recipes/library"
+                className="flex items-center gap-2 text-sm px-3 py-2 rounded-xl border border-amber-200/60 dark:border-amber-900/40 text-amber-700 dark:text-amber-200 hover:bg-amber-100/70 dark:hover:bg-amber-900/20 transition-colors"
+              >
+                <Library className="w-4 h-4" />
+                菜谱图鉴
+              </Link>
+              <Link
+                to="/recipes?import=1"
+                className="flex items-center gap-2 text-sm px-3 py-2 rounded-xl bg-amber-500 text-white hover:bg-amber-600 transition-colors"
+              >
+                <Upload className="w-4 h-4" />
+                导入菜谱
+              </Link>
+              <button
+                onClick={() => {
+                  loadDocuments();
+                  loadOptions();
+                }}
+                className="flex items-center gap-2 text-sm px-3 py-2 rounded-xl border border-amber-200/60 dark:border-amber-900/40 text-amber-700 dark:text-amber-200 hover:bg-amber-100/70 dark:hover:bg-amber-900/20 transition-colors"
+              >
+                <RefreshCcw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                同步知识库
+              </button>
+            </div>
           </div>
         </div>
 
@@ -373,28 +421,75 @@ export default function KnowledgePanel() {
 
           {/* Documents List Section */}
           <section className="bg-white dark:bg-gray-900/60 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-sm p-4 md:p-5">
-            <div className="flex items-center gap-2 mb-4">
+            <div className="flex items-center gap-2 mb-3">
               <div className="w-8 h-8 md:w-9 md:h-9 rounded-xl bg-amber-100 dark:bg-amber-500/10 flex items-center justify-center">
                 <FileText className="w-4 h-4 md:w-5 md:h-5 text-amber-500" />
               </div>
               <div>
-                <h2 className="font-semibold text-base md:text-lg">我的文档 ({documents.length})</h2>
-                <p className="text-xs text-gray-500">提交成功即刻可检索</p>
+                <h2 className="font-semibold text-base md:text-lg">我的文档 ({filteredDocuments.length}/{documents.length})</h2>
+                <p className="text-xs text-gray-500">按来源与分类逐级筛选</p>
               </div>
             </div>
+
+            {/* Two-level filter: source tabs + category chips */}
+            <div className="flex flex-wrap gap-1 mb-2 border-b border-gray-100 dark:border-gray-800 pb-2">
+              {sourceTabs.map(tab => {
+                const count = documents.filter(d => tab.value === 'all' || d.data_source === tab.value).length;
+                return (
+                  <button
+                    key={tab.value}
+                    onClick={() => { setDocSource(tab.value); setDocCategory(null); }}
+                    className={`text-xs px-2.5 py-1 rounded-full transition-colors ${
+                      docSource === tab.value
+                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-200 font-medium'
+                        : 'bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10'
+                    }`}
+                  >
+                    {tab.label} · {count}
+                  </button>
+                );
+              })}
+            </div>
+            {docCategories.length > 0 && (
+              <div className="flex flex-wrap gap-1 mb-3">
+                <button
+                  onClick={() => setDocCategory(null)}
+                  className={`text-[11px] px-2 py-0.5 rounded-full transition-colors ${
+                    !docCategory
+                      ? 'bg-gray-200 dark:bg-white/15 text-gray-700 dark:text-gray-200'
+                      : 'bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10'
+                  }`}
+                >
+                  不限
+                </button>
+                {docCategories.map(cat => (
+                  <button
+                    key={cat.label}
+                    onClick={() => setDocCategory(cat.label === docCategory ? null : cat.label)}
+                    className={`text-[11px] px-2 py-0.5 rounded-full transition-colors ${
+                      cat.label === docCategory
+                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-200'
+                        : 'bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10'
+                    }`}
+                  >
+                    {cat.label} · {cat.count}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {loading ? (
               <div className="flex items-center justify-center h-32 text-sm text-gray-500">
                 <Loader2 className="w-4 h-4 animate-spin mr-2" /> 加载中...
               </div>
-            ) : documents.length === 0 ? (
+            ) : filteredDocuments.length === 0 ? (
               <div className="h-32 flex flex-col items-center justify-center text-sm text-gray-500">
                 <BookOpen className="w-6 h-6 mb-2 text-gray-400" />
-                <p>还没有个人文档，快去添加一篇吧</p>
+                <p>{documents.length === 0 ? '还没有个人文档，快去添加一篇吧' : '该分类下暂无文档'}</p>
               </div>
             ) : (
               <div className="space-y-3 max-h-[50vh] lg:max-h-[60vh] overflow-y-auto pr-1">
-                {documents.map((doc) => (
+                {filteredDocuments.map((doc) => (
                   <article
                     key={doc.id}
                     className={`p-3 rounded-xl border bg-gradient-to-r from-white to-gray-50 dark:from-gray-900 dark:to-gray-900/40 transition-colors ${

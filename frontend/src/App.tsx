@@ -1,8 +1,8 @@
 // src/App.tsx
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import type { ReactElement } from 'react';
 import { BarChart3, BookOpen, Menu, LogOut, Utensils, ChevronDown } from 'lucide-react';
-import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ChatWindow, ChatInput, Sidebar, KnowledgePanel } from './components';
 import { AgentChatWindow, AgentChatInput } from './components/agent';
 import { useTheme, useAuth, useConversationContext, useAgentContext } from './contexts';
@@ -14,6 +14,7 @@ import DietManagementPage from './pages/diet/DietManagement';
 import DietProfilePage from './pages/diet/DietProfile';
 import PantryPage from './pages/diet/Pantry';
 import RecipeSearchPage from './pages/recipes/RecipeSearch';
+import RecipeLibraryPage from './pages/recipes/RecipeLibrary';
 import RecipeDetailPage from './pages/recipes/RecipeDetail';
 import CookingModePage from './pages/recipes/CookingMode';
 
@@ -108,7 +109,7 @@ function ChatView() {
   return (
     <>
       {error && (
-        <div className="absolute top-4 left-4 right-4 z-10 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 text-sm">
+        <div className="absolute top-4 left-4 right-4 z-10 p-3 bg-red-50/90 dark:bg-red-900/25 border border-red-200/80 dark:border-red-800/60 rounded-xl text-red-700 dark:text-red-300 text-sm backdrop-blur-sm">
           {error}
         </div>
       )}
@@ -122,20 +123,20 @@ function ChatView() {
              error={error}
              isToolSelectorOpen={isToolSelectorOpen}
            />
-          <div className="p-4 max-w-4xl w-full mx-auto">
+          <div className="px-4 pb-4 pt-1 max-w-3xl w-full mx-auto">
             <AgentChatInput
               onSend={agentSendMessage}
               onCancel={stopGeneration}
               disabled={isLoading}
               isStreaming={isStreaming}
-              placeholder="Ask Agent to calculate, analyze, or plan..."
+              placeholder="让 Agent 帮你规划…"
               externalValue={suggestionText}
               onExternalValueConsumed={handleSuggestionConsumed}
               token={token || undefined}
               onToolsOpenChange={setIsToolSelectorOpen}
             />
-            <div className="text-center text-xs text-gray-400 mt-2">
-              CookHero Agent can make mistakes. Consider checking important information.
+            <div className="text-center text-[11px] text-ink-400 mt-2.5">
+              CookHero 可能会出错，重要信息请自行核实。
             </div>
           </div>
         </>
@@ -147,18 +148,18 @@ function ChatView() {
              onSuggestionClick={handleSuggestionClick}
              error={error}
            />
-          <div className="p-4 max-w-4xl w-full mx-auto">
+          <div className="px-4 pb-4 pt-1 max-w-3xl w-full mx-auto">
             <ChatInput
               onSend={chatSendMessage}
               onCancel={stopGeneration}
               disabled={isLoading}
               isStreaming={isStreaming}
-              placeholder="Ask CookHero anything about cooking..."
+              placeholder="问问 CookHero…"
               externalValue={suggestionText}
               onExternalValueConsumed={handleSuggestionConsumed}
             />
-            <div className="text-center text-xs text-gray-400 mt-2">
-              CookHero can make mistakes. Consider checking important information.
+            <div className="text-center text-[11px] text-ink-400 mt-2.5">
+              CookHero 可能会出错，重要信息请自行核实。
             </div>
           </div>
         </>
@@ -227,7 +228,9 @@ function MainLayout({ children }: { children: React.ReactNode }) {
   const renameConversation = isAgentMode ? agentRenameSession : chatRenameConversation; 
 
   const { isDark, toggleTheme } = useTheme();
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(
+    () => typeof window === 'undefined' || window.innerWidth >= 768
+  );
   const [isAnalyticsMenuOpen, setIsAnalyticsMenuOpen] = useState(false);
   const analyticsMenuRef = useRef<HTMLDivElement>(null);
 
@@ -236,8 +239,56 @@ function MainLayout({ children }: { children: React.ReactNode }) {
   const isEvaluationView = location.pathname.includes('/evaluation');
   const isLLMStatsView = location.pathname.includes('/llm-stats');
   const isDietView = location.pathname.includes('/diet');
+  const isDietSubView = /\/diet\/(profile|pantry)/.test(location.pathname);
+  const isRecipeView = location.pathname.startsWith('/recipes');
+  const isRecipeLibraryView = location.pathname.includes('/recipes/library');
   const isAnalyticsView = isEvaluationView || isLLMStatsView;
   const analyticsLabel = isEvaluationView ? '评估监控' : isLLMStatsView ? '模型统计' : '数据分析';
+  const sectionLabel = isRecipeLibraryView
+    ? '菜谱图鉴'
+    : isRecipeView
+      ? '菜谱'
+      : isDietSubView
+        ? '饮食管理'
+        : isDietView
+          ? '饮食管理'
+          : isKnowledgeView
+            ? '知识库'
+            : isEvaluationView
+              ? '评估监控'
+              : isLLMStatsView
+                ? '模型统计'
+                : isAgentMode
+                  ? 'Agent 工作台'
+                  : '对话';
+
+  // Breadcrumb trail derived from the current path. The last crumb is the
+  // current page (not clickable); earlier crumbs link to their parent.
+  const crumbs = useMemo(() => {
+    const dietBase = isAgentMode ? '/agent/diet' : '/diet';
+    const result: { label: string; to?: string }[] = [];
+    if (isDietView) {
+      result.push({ label: '饮食管理', to: dietBase });
+      if (/\/diet\/profile/.test(location.pathname)) result.push({ label: '饮食档案' });
+      else if (/\/diet\/pantry/.test(location.pathname)) result.push({ label: '储物柜' });
+    } else if (isRecipeView) {
+      result.push({ label: '饮食管理', to: dietBase });
+      if (isRecipeLibraryView) result.push({ label: '菜谱图鉴' });
+      else if (/^\/(agent\/)?recipes\/[^/]+/.test(location.pathname)) result.push({ label: '菜谱详情' });
+      else result.push({ label: '菜谱搜索' });
+    } else if (isKnowledgeView) {
+      result.push({ label: '知识库' });
+    } else if (isEvaluationView) {
+      result.push({ label: '数据分析' });
+      result.push({ label: '评估监控' });
+    } else if (isLLMStatsView) {
+      result.push({ label: '数据分析' });
+      result.push({ label: '模型统计' });
+    } else {
+      result.push({ label: sectionLabel });
+    }
+    return result;
+  }, [location.pathname, isDietView, isRecipeView, isRecipeLibraryView, isKnowledgeView, isEvaluationView, isLLMStatsView, isAgentMode, sectionLabel]);
 
   useEffect(() => {
     setIsAnalyticsMenuOpen(false);
@@ -293,7 +344,7 @@ function MainLayout({ children }: { children: React.ReactNode }) {
   }, [logout, navigate]);
 
   return (
-    <div className="flex h-screen bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-200">
+    <div className="flex h-screen ch-app-bg text-ink-900 dark:text-cream-100 transition-colors duration-200">
       <Sidebar
         isOpen={isSidebarOpen}
         toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
@@ -312,48 +363,75 @@ function MainLayout({ children }: { children: React.ReactNode }) {
         onToggleAgentMode={handleToggleAgentMode}
       />
 
-      <div className="flex-1 flex flex-col h-full relative">
-        <header className="h-14 border-b border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm flex items-center px-4 justify-between z-50">
+      <div className="flex-1 flex flex-col h-full relative min-w-0">
+        <header className="h-16 ch-glass border-b flex items-center px-3 md:px-5 justify-between z-50 shrink-0">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="p-2 -ml-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+              className="ch-icon-btn"
               title={isSidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
             >
               <Menu className="w-5 h-5" />
             </button>
-            {/* <div className="flex items-center gap-2">
-              <span className="text-2xl">🍳</span>
-              <h1 className="font-bold text-gray-800 dark:text-gray-100">CookHero</h1>
-            </div> */}
+            <div className="hidden sm:flex items-center gap-2.5 min-w-0">
+              <img src="/logo1.png" alt="" className="w-7 h-7 object-contain" />
+              <span className="ch-wordmark text-[13px] text-ink-400 dark:text-ink-400">
+                CookHero
+              </span>
+              {crumbs.map((crumb, index) => (
+                <span key={`${crumb.label}-${index}`} className="flex items-center gap-2.5 min-w-0">
+                  <span className="text-ink-300 dark:text-ink-600 text-sm">/</span>
+                  {index < crumbs.length - 1 && crumb.to ? (
+                    <Link
+                      to={crumb.to}
+                      className="text-sm text-ink-500 dark:text-ink-300 hover:text-ember-600 dark:hover:text-ember-300 transition-colors truncate"
+                    >
+                      {crumb.label}
+                    </Link>
+                  ) : (
+                    <span className="text-sm font-medium text-ink-900 dark:text-cream-100 truncate">
+                      {crumb.label}
+                    </span>
+                  )}
+                </span>
+              ))}
+            </div>
+            <div className="flex sm:hidden items-center gap-2 min-w-0">
+              <img src="/logo1.png" alt="" className="w-6 h-6 object-contain" />
+              <span className="text-sm font-medium text-ink-900 dark:text-cream-100 truncate">
+                {crumbs[crumbs.length - 1]?.label ?? sectionLabel}
+              </span>
+            </div>
           </div>
-          <div className="flex items-center gap-1.5 sm:gap-3 text-xs text-gray-600 dark:text-gray-300 overflow-visible">
+          <div className="flex items-center gap-1 sm:gap-1.5 text-xs text-ink-600 dark:text-ink-200 overflow-visible">
             {!isKnowledgeView && !isEvaluationView && !isLLMStatsView && !isDietView && conversationId && (
-              <span className="hidden sm:inline font-mono bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded truncate" title={conversationId}>
-                ID: {conversationId}
+              <span className="hidden lg:inline font-mono text-[10px] text-ink-400 bg-white/50 dark:bg-white/5 border border-cream-300/50 dark:border-white/10 px-2 py-1 rounded-full truncate max-w-[140px]" title={conversationId}>
+                {conversationId.slice(0, 8)}
               </span>
             )}
             <button
               onClick={() => {
                 if (isDietView) {
-                  const basePath = isAgentMode ? '/agent' : '/chat';
-                  if (conversationId && !conversationId.startsWith('temp-')) {
-                    navigate(`${basePath}/${conversationId}`);
+                  if (isDietSubView) {
+                    // From a diet sub-page, go up to the diet management hub.
+                    navigate(isAgentMode ? '/agent/diet' : '/diet');
                   } else {
-                    navigate(basePath);
+                    // Already on the diet hub → return to the conversation.
+                    const basePath = isAgentMode ? '/agent' : '/chat';
+                    if (conversationId && !conversationId.startsWith('temp-')) {
+                      navigate(`${basePath}/${conversationId}`);
+                    } else {
+                      navigate(basePath);
+                    }
                   }
                 } else {
                   navigate(isAgentMode ? '/agent/diet' : '/diet');
                 }
               }}
-              className={`flex items-center gap-1 px-2 sm:px-3 py-1 rounded-full border transition-colors shrink-0 ${
-                isDietView
-                  ? 'border-green-400 bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-200 dark:border-green-600'
-                  : 'border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
-              }`}
+              className={`ch-nav-pill ${isDietView ? 'ch-nav-pill-active' : ''}`}
             >
               <Utensils className="w-4 h-4" />
-              <span className="hidden sm:inline">{isDietView ? '返回对话' : '饮食管理'}</span>
+              <span className="hidden sm:inline">{isDietView ? (isDietSubView ? '返回饮食管理' : '返回对话') : '饮食管理'}</span>
             </button>
             <button
               onClick={() => {
@@ -368,11 +446,7 @@ function MainLayout({ children }: { children: React.ReactNode }) {
                   navigate(isAgentMode ? '/agent/knowledge' : '/knowledge');
                 }
               }}
-              className={`flex items-center gap-1 px-2 sm:px-3 py-1 rounded-full border transition-colors shrink-0 ${
-                isKnowledgeView
-                  ? 'border-blue-400 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200 dark:border-blue-600'
-                  : 'border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
-              }`}
+              className={`ch-nav-pill ${isKnowledgeView ? 'ch-nav-pill-active' : ''}`}
             >
               <BookOpen className="w-4 h-4" />
               <span className="hidden sm:inline">{isKnowledgeView ? '返回对话' : '知识库'}</span>
@@ -380,18 +454,14 @@ function MainLayout({ children }: { children: React.ReactNode }) {
             <div ref={analyticsMenuRef} className="relative">
               <button
                 onClick={() => setIsAnalyticsMenuOpen(prev => !prev)}
-                className={`flex items-center gap-1 px-2 sm:px-3 py-1 rounded-full border transition-all duration-200 shrink-0 ${
-                  isAnalyticsView
-                    ? 'border-orange-400 bg-orange-50 text-orange-700 dark:bg-orange-900/30 dark:text-orange-200 dark:border-orange-600'
-                    : 'border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-orange-50 dark:hover:bg-orange-900/20 hover:border-orange-300 dark:hover:border-orange-700'
-                }`}
+                className={`ch-nav-pill ${isAnalyticsView ? 'ch-nav-pill-active' : ''}`}
               >
                 <BarChart3 className="w-4 h-4" />
                 <span className="hidden sm:inline">{analyticsLabel}</span>
-                <ChevronDown className="w-4 h-4" />
+                <ChevronDown className="w-3.5 h-3.5 opacity-60 hidden sm:block" />
               </button>
               {isAnalyticsMenuOpen && (
-                <div className="absolute right-0 mt-2 rounded-xl border border-gray-200/60 dark:border-gray-700/60 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm shadow-xl overflow-hidden z-50">
+                <div className="absolute right-0 mt-2 w-44 ch-card !rounded-2xl overflow-hidden z-50 py-1.5">
                   {isAnalyticsView && (
                     <button
                       onClick={(e) => {
@@ -399,9 +469,8 @@ function MainLayout({ children }: { children: React.ReactNode }) {
                         setIsAnalyticsMenuOpen(false);
                         goBackToChat();
                       }}
-                      className="w-full text-left px-4 py-2.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-gradient-to-r hover:from-orange-50 hover:to-orange-100/50 dark:hover:from-orange-900/30 dark:hover:to-orange-900/10 border-b border-gray-100/50 dark:border-gray-800/50 transition-all duration-200 flex items-center gap-2"
+                      className="w-full text-left px-4 py-2.5 text-sm text-ink-600 dark:text-ink-200 hover:bg-cream-100 dark:hover:bg-white/5 border-b border-cream-200/70 dark:border-white/5 transition-colors flex items-center gap-2"
                     >
-                      {/* <span className="text-orange-500">←</span> */}
                       返回对话
                     </button>
                   )}
@@ -411,13 +480,13 @@ function MainLayout({ children }: { children: React.ReactNode }) {
                       setIsAnalyticsMenuOpen(false);
                       navigate(isAgentMode ? '/agent/evaluation' : '/evaluation');
                     }}
-                    className={`w-full text-left px-4 py-2.5 text-sm transition-all duration-200 flex items-center gap-2.5 ${
+                    className={`w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center gap-2.5 ${
                       isEvaluationView
-                        ? 'text-orange-600 dark:text-orange-400 bg-gradient-to-r from-orange-50 to-orange-100/50 dark:from-orange-900/30 dark:to-orange-900/20 font-medium'
-                        : 'text-gray-700 dark:text-gray-200 hover:bg-gradient-to-r hover:from-orange-50 hover:to-orange-100/50 dark:hover:from-orange-900/30 dark:hover:to-orange-900/10'
+                        ? 'text-ember-600 dark:text-ember-300 font-medium bg-ember-50/70 dark:bg-ember-500/10'
+                        : 'text-ink-700 dark:text-ink-200 hover:bg-cream-100 dark:hover:bg-white/5'
                     }`}
                   >
-                                       评估监控
+                    评估监控
                   </button>
                   <button
                     onClick={(e) => {
@@ -425,34 +494,40 @@ function MainLayout({ children }: { children: React.ReactNode }) {
                       setIsAnalyticsMenuOpen(false);
                       navigate(isAgentMode ? '/agent/llm-stats' : '/llm-stats');
                     }}
-                    className={`w-full text-left px-4 py-2.5 text-sm transition-all duration-200 flex items-center gap-2.5 ${
+                    className={`w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center gap-2.5 ${
                       isLLMStatsView
-                        ? 'text-orange-600 dark:text-orange-400 bg-gradient-to-r from-orange-50 to-orange-100/50 dark:from-orange-900/30 dark:to-orange-900/20 font-medium'
-                        : 'text-gray-700 dark:text-gray-200 hover:bg-gradient-to-r hover:from-orange-50 hover:to-orange-100/50 dark:hover:from-orange-900/30 dark:hover:to-orange-900/10'
+                        ? 'text-ember-600 dark:text-ember-300 font-medium bg-ember-50/70 dark:bg-ember-500/10'
+                        : 'text-ink-700 dark:text-ink-200 hover:bg-cream-100 dark:hover:bg-white/5'
                     }`}
                   >
-                     模型统计
+                    模型统计
                   </button>
                 </div>
               )}
             </div>
             {username && (
-              <div className="flex items-center gap-1 sm:gap-2 bg-gray-100 dark:bg-gray-800 px-2 sm:px-3 py-1 rounded-full shrink-0">
-                <span className="font-semibold hidden sm:inline">{username}</span>
-                <button
-                  onClick={handleLogout}
-                  className="text-gray-500 hover:text-gray-800 dark:hover:text-gray-100 flex items-center gap-1"
-                  title="Log out"
-                >
-                  <LogOut className="w-4 h-4" />
-                  <span className="hidden md:inline">Logout</span>
-                </button>
+              <div className="flex items-center gap-1.5 ml-1 pl-2 border-l border-cream-300/60 dark:border-white/10 shrink-0">
+                <div className="w-7 h-7 rounded-full ch-avatar flex items-center justify-center text-[11px] font-bold">
+                  {username.charAt(0).toUpperCase()}
+                </div>
+                <span className="font-medium text-[13px] hidden md:inline text-ink-700 dark:text-ink-100 max-w-[100px] truncate">
+                  {username}
+                </span>
+                <span className="hidden sm:inline-flex">
+                  <button
+                    onClick={handleLogout}
+                    className="ch-icon-btn !w-8 !h-8"
+                    title="退出登录"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                </span>
               </div>
             )}
           </div>
         </header>
 
-        <main className="flex-1 flex flex-col overflow-hidden relative bg-gradient-to-b from-white to-gray-50 dark:from-gray-900 dark:to-gray-950">
+        <main className="flex-1 flex flex-col overflow-hidden relative min-w-0">
           {children}
         </main>
       </div>
@@ -608,6 +683,16 @@ function App() {
         }
       />
       <Route
+        path="/recipes/library"
+        element={
+          <RequireAuth>
+            <MainLayout>
+              <RecipeLibraryPage />
+            </MainLayout>
+          </RequireAuth>
+        }
+      />
+      <Route
         path="/recipes/:id"
         element={
           <RequireAuth>
@@ -663,6 +748,16 @@ function App() {
           <RequireAuth>
             <MainLayout>
               <RecipeSearchPage />
+            </MainLayout>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/agent/recipes/library"
+        element={
+          <RequireAuth>
+            <MainLayout>
+              <RecipeLibraryPage />
             </MainLayout>
           </RequireAuth>
         }

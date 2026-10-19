@@ -13,12 +13,17 @@ from app.diet.database.models import RecipeFeedbackModel, RecipeReviewModel
 
 SIGNAL_SCORES = {
     "view": 1.0,
+    "want": 5.0,
     "favorite": 8.0,
     "cooked": 10.0,
     "like": 6.0,
     "dislike": -12.0,
     "skip": -6.0,
 }
+
+# Signals that represent a durable user state (used by the recipe library
+# tri-state filter: want / favorite / cooked).
+STATEFUL_SIGNALS = ("want", "favorite", "cooked")
 
 
 def score_feedback_signals(signals: Iterable[str]) -> float:
@@ -84,6 +89,33 @@ class FeedbackService:
             recipe_id: score_feedback_signals(item.signal for item in values)
             for recipe_id, values in grouped.items()
         }
+
+    async def user_signals(self, user_id: str) -> dict[str, set[str]]:
+        """Return ``{recipe_id: {signal, ...}}`` for stateful signals (want/favorite/cooked)."""
+        async with get_session_context() as session:
+            stmt = (
+                select(RecipeFeedbackModel)
+                .where(
+                    RecipeFeedbackModel.user_id == str(user_id),
+                    RecipeFeedbackModel.signal.in_(STATEFUL_SIGNALS),
+                )
+                .order_by(RecipeFeedbackModel.created_at.desc())
+                .limit(2000)
+            )
+            records = list((await session.execute(stmt)).scalars().all())
+        grouped: dict[str, set[str]] = defaultdict(set)
+        for record in records:
+            grouped[str(record.recipe_id)].add(str(record.signal))
+        return grouped
+
+    async def recipes_with_signal(
+        self, user_id: str, signal: str
+    ) -> set[str]:
+        """Recipe ids the user has marked with the given stateful signal."""
+        if signal not in STATEFUL_SIGNALS:
+            return set()
+        signals = await self.user_signals(user_id)
+        return {rid for rid, sigs in signals.items() if signal in sigs}
 
     async def upsert_review(
         self,

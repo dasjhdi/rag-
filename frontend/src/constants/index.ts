@@ -5,6 +5,12 @@
 // API Configuration
 export const API_BASE = '/api/v1';
 
+// Media assets (recipe photos). In development Vite proxies /media to the API;
+// set VITE_MEDIA_BASE when the frontend and API are served from different origins.
+export const MEDIA_BASE = (
+  (import.meta.env.VITE_MEDIA_BASE as string | undefined) || ''
+).replace(/\/$/, '');
+
 // Pagination
 export const CONVERSATIONS_PAGE_SIZE = 30;
 
