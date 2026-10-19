@@ -12,6 +12,7 @@ import hashlib
 import logging
 import pickle
 from typing import List, Optional
+from urllib.parse import quote
 
 import redis.asyncio as redis
 from langchain_core.documents import Document
@@ -21,6 +22,41 @@ from app.rag.cache.base import KeywordCacheBackend, VectorCacheBackend
 from app.rag.cache.backends import MilvusVectorCache, RedisKeywordCache
 
 logger = logging.getLogger(__name__)
+
+
+def _scope_part(label: str, value: str | None) -> str | None:
+    """Build one encoded scope component; blank values are ignored."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return f"{label}={quote(text, safe='')}"
+
+
+def build_cache_scope(
+    user_id: str | None = None,
+    *,
+    corpus_version: str | None = None,
+    embedding_model: str | None = None,
+) -> str:
+    """
+    Build a deterministic cache scope from user, corpus and embedding versions.
+
+    The result is safe for Redis keys and Milvus scalar filters. When no
+    dimension is supplied it falls back to ``global`` so existing callers keep
+    their previous behaviour.
+    """
+    parts = [
+        part
+        for part in (
+            _scope_part("u", user_id),
+            _scope_part("c", corpus_version),
+            _scope_part("e", embedding_model),
+        )
+        if part
+    ]
+    return "|".join(parts) if parts else "global"
 
 
 class CacheManager:

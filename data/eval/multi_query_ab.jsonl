@@ -1,0 +1,15 @@
+{"query": "有番茄和鸡蛋，想做快手菜", "bucket": "recipe", "relevant_ids": ["a1"], "single_ranked_ids": ["x1", "x2"], "multi_ranked_ids": ["a1", "x1"]}
+{"query": "牛肉和土豆怎么搭配", "bucket": "recipe", "relevant_ids": ["a2"], "single_ranked_ids": ["x1", "x2"], "multi_ranked_ids": ["a2", "x2"]}
+{"query": "冰箱里有豆腐和香菇", "bucket": "recipe", "relevant_ids": ["a3"], "single_ranked_ids": ["x1", "x2"], "multi_ranked_ids": ["a3", "x1"]}
+{"query": "鸡胸肉适合做什么减脂菜", "bucket": "recipe", "relevant_ids": ["a4"], "single_ranked_ids": ["x1", "x2"], "multi_ranked_ids": ["a4", "x2"]}
+{"query": "番茄炒蛋怎么做才不出水", "bucket": "recipe", "relevant_ids": ["a5"], "single_ranked_ids": ["x1", "x2", "a5"], "multi_ranked_ids": ["a5", "x1"]}
+{"query": "红烧肉怎么收汁更亮", "bucket": "recipe", "relevant_ids": ["a6"], "single_ranked_ids": ["x1", "x2", "a6"], "multi_ranked_ids": ["a6", "x1"]}
+{"query": "清蒸鱼怎么去腥", "bucket": "recipe", "relevant_ids": ["a7"], "single_ranked_ids": ["x1", "x2", "a7"], "multi_ranked_ids": ["a7", "x2"]}
+{"query": "麻婆豆腐怎么做更入味", "bucket": "recipe", "relevant_ids": ["a8"], "single_ranked_ids": ["x1", "x2", "a8"], "multi_ranked_ids": ["a8", "x1"]}
+{"query": "推荐几道新手家常菜", "bucket": "recommendation", "relevant_ids": ["a9"], "single_ranked_ids": ["a9", "x1"], "multi_ranked_ids": ["a9", "x1"]}
+{"query": "适合带饭的菜有哪些", "bucket": "recommendation", "relevant_ids": ["a10"], "single_ranked_ids": ["a10", "x1"], "multi_ranked_ids": ["a10", "x1"]}
+{"query": "减脂期晚餐吃什么", "bucket": "recommendation", "relevant_ids": ["a11"], "single_ranked_ids": ["a11", "x1"], "multi_ranked_ids": ["a11", "x1"]}
+{"query": "两个人吃做什么合适", "bucket": "recommendation", "relevant_ids": ["a12"], "single_ranked_ids": ["a12", "x1"], "multi_ranked_ids": ["a12", "x1"]}
+{"query": "鸡蛋可以做什么早餐", "bucket": "ingredient", "relevant_ids": ["a13"], "single_ranked_ids": ["a13", "x1"], "multi_ranked_ids": ["x1", "x2"]}
+{"query": "土豆除了炒还能怎么做", "bucket": "ingredient", "relevant_ids": ["a14"], "single_ranked_ids": ["a14", "x1"], "multi_ranked_ids": ["x1", "x2"]}
+{"query": "菠菜怎么去涩味", "bucket": "ingredient", "relevant_ids": ["a15"], "single_ranked_ids": ["a15", "x1"], "multi_ranked_ids": ["x1", "x2"]}

@@ -206,14 +206,19 @@ class LLMInvoker:
             self._llm_type, **self._create_kwargs
         )
 
-    def _get_llm_with_model(self, tools: list[Any] | None = None) -> ChatOpenAI:
+    def _get_llm_with_model(
+        self,
+        tools: list[Any] | None = None,
+        model: str | None = None,
+    ) -> ChatOpenAI:
         """
-        获取绑定了随机模型的 LLM 实例
+        获取绑定了模型的 LLM 实例
 
-        每次调用都会随机选择一个模型，实现负载均衡
+        默认每次调用随机选择一个模型，实现负载均衡；显式传入 ``model``
+        时使用该模型（用于视觉等需要确定性主备顺序的场景）。
         """
-        model = self._provider.pick_model(self._llm_type)
-        llm = self._base_llm.bind(model=model)
+        selected = model or self._provider.pick_model(self._llm_type)
+        llm = self._base_llm.bind(model=selected)
 
         if tools:
             llm = llm.bind(tools=tools)  # type: ignore
@@ -239,9 +244,10 @@ class LLMInvoker:
         return kwargs
     
     async def ainvoke(self, messages: list, **kwargs: Any) -> Any:
-        """异步调用 LLM"""
+        """异步调用 LLM；``model`` 可显式指定本次使用的模型。"""
+        model = kwargs.pop("model", None)
         kwargs = self._prepare_config(kwargs)
-        return await self._get_llm_with_model().ainvoke(messages, **kwargs)
+        return await self._get_llm_with_model(model=model).ainvoke(messages, **kwargs)
 
     async def ainvoke_with_tools(
         self, messages: list, tools: list, **kwargs: Any

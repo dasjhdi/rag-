@@ -1,12 +1,46 @@
 # app/rag/pipeline/retrieval.py
 import asyncio
 import logging
-from typing import List, Tuple, Optional
+from typing import Dict, Iterable, List, Tuple, Optional
 
 from langchain_milvus import Milvus
 from langchain_core.documents import Document
 
 logger = logging.getLogger(__name__)
+
+
+def _retrieval_score(document: Document) -> float:
+    try:
+        return float((document.metadata or {}).get("retrieval_score", 0.0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def merge_documents(documents: Iterable[Document]) -> List[Document]:
+    """
+    Merge documents from several queries, keeping the highest-scored copy.
+
+    Documents are matched by ``parent_id`` within the same data source. When a
+    document has no ``parent_id`` its content is used as the key so unrelated
+    chunks are not collapsed into one another.
+    """
+    merged: Dict[tuple, Document] = {}
+
+    for document in documents:
+        metadata = document.metadata or {}
+        source = metadata.get("data_source") or ""
+        parent_id = metadata.get("parent_id")
+        if parent_id is not None:
+            key = (source, "parent", str(parent_id))
+        else:
+            key = (source, "content", document.page_content)
+
+        existing = merged.get(key)
+        if existing is None or _retrieval_score(document) > _retrieval_score(existing):
+            merged[key] = document
+
+    return sorted(merged.values(), key=_retrieval_score, reverse=True)
+
 
 class RetrievalOptimizationModule:
     """

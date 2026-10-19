@@ -110,6 +110,11 @@ retrieval:
   ranker_type: "weighted"
   # Weights for hybrid ranking [dense_vector, sparse_bm25]
   ranker_weights: [0.8, 0.2]
+  # Enable LLM-driven query decomposition for multi-query retrieval.
+  # Off by default to keep latency and cost unchanged.
+  multi_query_enabled: false
+  # Maximum number of queries (including the original query)
+  max_queries: 3
 
 # 4.2 Reranker Configuration
 # ------------------------------------------------------------------------------
@@ -128,6 +133,9 @@ reranker:
   max_tokens: 8192
   # Minimum score threshold for reranked results
   score_threshold: 0.2
+  # Optional local cross-encoder fallback (requires sentence_transformers)
+  local_cross_encoder_enabled: true
+  local_cross_encoder_model: "D:/models/bge-reranker-v2-m3"
 
 # 4.3 Cache Configuration
 # ------------------------------------------------------------------------------
@@ -149,6 +157,8 @@ cache:
   similarity_threshold: 0.92
   # Collection name for L2 cache storage
   vector_collection: "cookhero_retrieval_cache"
+  # Corpus version participates in cache isolation. Bump when re-indexing.
+  corpus_version: "howtocook-v1"
   # L2 cache credentials loaded from .env (MILVUS_USER / MILVUS_PASSWORD)
 
 # =============================================================================

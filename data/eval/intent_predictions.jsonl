@@ -1,0 +1,45 @@
+{"query": "番茄炒蛋怎么做", "gold_intent": "recipe_search", "predicted_intent": "recipe_search", "bucket": "recipe", "ranked_ids": ["r1", "x1", "x2"], "relevant_ids": ["r1"]}
+{"query": "宫保鸡丁的做法", "gold_intent": "recipe_search", "predicted_intent": "recipe_search", "bucket": "recipe", "ranked_ids": ["r2", "x1"], "relevant_ids": ["r2"]}
+{"query": "红烧肉怎么炖得软烂", "gold_intent": "recipe_search", "predicted_intent": "recipe_search", "bucket": "recipe", "ranked_ids": ["x1", "r3", "x2"], "relevant_ids": ["r3"]}
+{"query": "清蒸鲈鱼需要蒸多久", "gold_intent": "recipe_search", "predicted_intent": "recipe_search", "bucket": "recipe", "ranked_ids": ["r4", "x1"], "relevant_ids": ["r4"]}
+{"query": "可乐鸡翅的完整步骤", "gold_intent": "recipe_search", "predicted_intent": "recipe_search", "bucket": "recipe", "ranked_ids": ["x1", "x2", "r5", "x3"], "relevant_ids": ["r5"]}
+{"query": "麻婆豆腐怎么做", "gold_intent": "recipe_search", "predicted_intent": "recipe_search", "bucket": "recipe", "ranked_ids": ["r6", "x1"], "relevant_ids": ["r6"]}
+{"query": "糖醋里脊的挂糊比例", "gold_intent": "recipe_search", "predicted_intent": "recipe_search", "bucket": "recipe", "ranked_ids": ["x1", "x2", "x3", "x4", "x5", "r7", "x6"], "relevant_ids": ["r7"]}
+{"query": "番茄和鸡蛋能做什么菜", "gold_intent": "recipe_search", "predicted_intent": "recipe_search", "bucket": "ingredient", "ranked_ids": ["r8", "x1"], "relevant_ids": ["r8"]}
+{"query": "晚上想吃点简单的，有什么菜", "gold_intent": "recipe_search", "predicted_intent": "recommendation", "bucket": "recommendation", "ranked_ids": ["r9", "x1"], "relevant_ids": ["r9"]}
+{"query": "炒菜什么时候放盐", "gold_intent": "cooking_tips", "predicted_intent": "cooking_tips", "bucket": "technique", "ranked_ids": ["r10", "x1"], "relevant_ids": ["r10"]}
+{"query": "红烧肉怎么收汁", "gold_intent": "cooking_tips", "predicted_intent": "cooking_tips", "bucket": "technique", "ranked_ids": ["r11", "x1"], "relevant_ids": ["r11"]}
+{"query": "牛排煎几分钟", "gold_intent": "cooking_tips", "predicted_intent": "cooking_tips", "bucket": "technique", "ranked_ids": ["x1", "r12", "x2"], "relevant_ids": ["r12"]}
+{"query": "如何判断油温", "gold_intent": "cooking_tips", "predicted_intent": "cooking_tips", "bucket": "technique", "ranked_ids": ["r13", "x1"], "relevant_ids": ["r13"]}
+{"query": "炖肉为什么发柴", "gold_intent": "cooking_tips", "predicted_intent": "cooking_tips", "bucket": "technique", "ranked_ids": ["x1", "x2", "r14", "x3"], "relevant_ids": ["r14"]}
+{"query": "炒青菜怎么保持翠绿", "gold_intent": "cooking_tips", "predicted_intent": "cooking_tips", "bucket": "technique", "ranked_ids": ["r15", "x1"], "relevant_ids": ["r15"]}
+{"query": "面团发酵失败怎么补救", "gold_intent": "cooking_tips", "predicted_intent": "cooking_tips", "bucket": "technique", "ranked_ids": ["x1", "x2", "x3", "x4", "x5", "r16", "x6"], "relevant_ids": ["r16"]}
+{"query": "番茄炒蛋先炒蛋还是先炒番茄", "gold_intent": "cooking_tips", "predicted_intent": "cooking_tips", "bucket": "recipe", "ranked_ids": ["r17", "x1"], "relevant_ids": ["r17"]}
+{"query": "煮饺子怎么不破皮", "gold_intent": "cooking_tips", "predicted_intent": "recipe_search", "bucket": "ingredient", "ranked_ids": ["r18", "x1"], "relevant_ids": ["r18"]}
+{"query": "土豆和牛肉能一起做什么", "gold_intent": "ingredient_info", "predicted_intent": "ingredient_info", "bucket": "ingredient", "ranked_ids": ["r19", "x1"], "relevant_ids": ["r19"]}
+{"query": "鸡蛋可以做什么菜", "gold_intent": "ingredient_info", "predicted_intent": "ingredient_info", "bucket": "ingredient", "ranked_ids": ["r20", "x1"], "relevant_ids": ["r20"]}
+{"query": "豆腐怎么做好吃", "gold_intent": "ingredient_info", "predicted_intent": "ingredient_info", "bucket": "ingredient", "ranked_ids": ["x1", "r21", "x2"], "relevant_ids": ["r21"]}
+{"query": "香菇和什么搭配", "gold_intent": "ingredient_info", "predicted_intent": "ingredient_info", "bucket": "ingredient", "ranked_ids": ["r22", "x1"], "relevant_ids": ["r22"]}
+{"query": "牛肉适合做什么菜", "gold_intent": "ingredient_info", "predicted_intent": "ingredient_info", "bucket": "ingredient", "ranked_ids": ["x1", "x2", "r23", "x3"], "relevant_ids": ["r23"]}
+{"query": "菠菜怎么去涩味", "gold_intent": "ingredient_info", "predicted_intent": "ingredient_info", "bucket": "ingredient", "ranked_ids": ["r24", "x1"], "relevant_ids": ["r24"]}
+{"query": "虾仁怎么处理更嫩", "gold_intent": "ingredient_info", "predicted_intent": "ingredient_info", "bucket": "ingredient", "ranked_ids": ["x1", "x2", "x3", "x4", "x5", "r25", "x6"], "relevant_ids": ["r25"]}
+{"query": "番茄适合和什么一起吃", "gold_intent": "ingredient_info", "predicted_intent": "ingredient_info", "bucket": "recipe", "ranked_ids": ["r26", "x1"], "relevant_ids": ["r26"]}
+{"query": "鸡胸肉怎么腌制", "gold_intent": "ingredient_info", "predicted_intent": "cooking_tips", "bucket": "technique", "ranked_ids": ["r27", "x1"], "relevant_ids": ["r27"]}
+{"query": "推荐几道适合新手的家常菜", "gold_intent": "recommendation", "predicted_intent": "recommendation", "bucket": "recommendation", "ranked_ids": ["r28", "x1"], "relevant_ids": ["r28"]}
+{"query": "有什么清淡的晚餐推荐", "gold_intent": "recommendation", "predicted_intent": "recommendation", "bucket": "recommendation", "ranked_ids": ["r29", "x1"], "relevant_ids": ["r29"]}
+{"query": "适合带饭的菜有哪些", "gold_intent": "recommendation", "predicted_intent": "recommendation", "bucket": "recommendation", "ranked_ids": ["x1", "r30", "x2"], "relevant_ids": ["r30"]}
+{"query": "减脂期吃什么好", "gold_intent": "recommendation", "predicted_intent": "recommendation", "bucket": "recommendation", "ranked_ids": ["r31", "x1"], "relevant_ids": ["r31"]}
+{"query": "周末想露一手做什么菜", "gold_intent": "recommendation", "predicted_intent": "recommendation", "bucket": "recommendation", "ranked_ids": ["x1", "x2", "r32", "x3"], "relevant_ids": ["r32"]}
+{"query": "两个人吃做什么合适", "gold_intent": "recommendation", "predicted_intent": "recommendation", "bucket": "recommendation", "ranked_ids": ["r33", "x1"], "relevant_ids": ["r33"]}
+{"query": "有什么下饭菜推荐", "gold_intent": "recommendation", "predicted_intent": "recommendation", "bucket": "recommendation", "ranked_ids": ["x1", "x2", "x3", "x4", "x5", "r34", "x6"], "relevant_ids": ["r34"]}
+{"query": "番茄炒蛋适合配什么主食", "gold_intent": "recommendation", "predicted_intent": "recommendation", "bucket": "recipe", "ranked_ids": ["r35", "x1"], "relevant_ids": ["r35"]}
+{"query": "鸡蛋和什么搭配做早餐", "gold_intent": "recommendation", "predicted_intent": "recipe_search", "bucket": "ingredient", "ranked_ids": ["r36", "x1"], "relevant_ids": ["r36"]}
+{"query": "你好", "gold_intent": "general_chat", "predicted_intent": "general_chat", "bucket": "chat", "ranked_ids": [], "relevant_ids": []}
+{"query": "谢谢", "gold_intent": "general_chat", "predicted_intent": "general_chat", "bucket": "chat", "ranked_ids": [], "relevant_ids": []}
+{"query": "好的", "gold_intent": "general_chat", "predicted_intent": "general_chat", "bucket": "chat", "ranked_ids": [], "relevant_ids": []}
+{"query": "继续", "gold_intent": "general_chat", "predicted_intent": "general_chat", "bucket": "chat", "ranked_ids": [], "relevant_ids": []}
+{"query": "明白了", "gold_intent": "general_chat", "predicted_intent": "general_chat", "bucket": "chat", "ranked_ids": [], "relevant_ids": []}
+{"query": "早上好", "gold_intent": "general_chat", "predicted_intent": "general_chat", "bucket": "chat", "ranked_ids": [], "relevant_ids": []}
+{"query": "今天心情不错", "gold_intent": "general_chat", "predicted_intent": "general_chat", "bucket": "chat", "ranked_ids": [], "relevant_ids": []}
+{"query": "随便聊聊", "gold_intent": "general_chat", "predicted_intent": "recommendation", "bucket": "chat", "ranked_ids": [], "relevant_ids": []}
+{"query": "再见", "gold_intent": "general_chat", "predicted_intent": "general_chat", "bucket": "chat", "ranked_ids": [], "relevant_ids": []}

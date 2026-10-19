@@ -9,6 +9,11 @@ from app.config.rag_config import RerankerConfig
 
 logger = logging.getLogger(__name__)
 
+
+class RerankerUnavailableError(RuntimeError):
+    """Raised when the remote reranker cannot return a usable response."""
+
+
 class SiliconFlowReranker(BaseReranker):
     """
     A reranker that uses the dedicated SiliconFlow rerank API endpoint.
@@ -59,12 +64,11 @@ class SiliconFlowReranker(BaseReranker):
         except httpx.HTTPStatusError as e:
             logger.error(f"HTTP error occurred during rerank API call: {e}")
             logger.error(f"Response content: {e.response.text}")
-            # Fallback: return original documents on API error
-            return documents
+            # Signal failure so FaultTolerantReranker can use the local fallback.
+            raise RerankerUnavailableError("rerank API returned an HTTP error") from e
         except Exception as e:
             logger.error(f"An unexpected error occurred during rerank API call: {e}")
-            # Fallback: return original documents
-            return documents
+            raise RerankerUnavailableError("rerank API call failed") from e
 
         # Process results
         results = api_results.get("results", [])

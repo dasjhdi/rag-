@@ -38,6 +38,12 @@ from app.llm.context import (
     get_llm_context,
     clear_llm_context,
 )
+from app.llm.structured import (
+    StructuredOutputError,
+    invoke_structured,
+    supports_native_json_schema,
+    reset_capability_cache,
+)
 
 __all__ = [
     # 核心类
@@ -51,4 +57,9 @@ __all__ = [
     "clear_llm_context",
     # Callbacks
     "get_usage_callbacks",
+    # 结构化输出
+    "StructuredOutputError",
+    "invoke_structured",
+    "supports_native_json_schema",
+    "reset_capability_cache",
 ]

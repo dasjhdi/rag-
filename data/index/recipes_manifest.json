@@ -1,0 +1,10 @@
+{
+  "collection": "cook_hero_recipes",
+  "corpus_version": "howtocook-v1",
+  "created_at": "2026-10-17T00:00:00+00:00",
+  "dimension": 512,
+  "document_count": 0,
+  "embedding_model": "BAAI/bge-small-zh-v1.5",
+  "source_digest": "",
+  "chunk_count": 0
+}

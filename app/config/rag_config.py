@@ -45,6 +45,9 @@ class RetrievalConfig(BaseModel):
     score_threshold: float = 0.2
     ranker_type: Literal["rrf", "weighted"] = "weighted"
     ranker_weights: List[float] = [0.8, 0.2]  # [dense, sparse]
+    # LLM-driven query decomposition (extra latency/cost; off by default)
+    multi_query_enabled: bool = False
+    max_queries: int = 3
 
 
 class RerankerConfig(BaseModel):
@@ -60,6 +63,9 @@ class RerankerConfig(BaseModel):
     temperature: float = 0.0
     max_tokens: int = 8192
     score_threshold: float = 0.1
+    # Optional local cross-encoder fallback (off by default; no model download at startup)
+    local_cross_encoder_enabled: bool = False
+    local_cross_encoder_model: Optional[str] = None
 
 
 class CacheConfig(BaseModel):
@@ -81,6 +87,8 @@ class CacheConfig(BaseModel):
     l2_enabled: bool = True
     similarity_threshold: float = 0.92
     vector_collection: str = "cookhero_retrieval_cache"
+    # Bump this when the indexed corpus changes so cached results are not reused
+    corpus_version: Optional[str] = None
 
 
 class HowToCookConfig(BaseModel):
