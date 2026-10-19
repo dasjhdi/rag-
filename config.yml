@@ -199,7 +199,11 @@ evaluation:
   async_mode: true
   # Sampling rate (0.0-1.0): Fraction of requests to evaluate
   # 1.0 = evaluate all requests, 0.1 = evaluate 10% of requests
-  sample_rate: 1.0
+  #
+  # 保持 1.0 会让每个 RAG 请求都在后台跑一次 RAGAS 评测：RAGAS 会在
+  # 独立线程里执行 asyncio.run()，既额外消耗 fast 层模型的 token，也会
+  # 拖慢整体响应。采样率降到 0.1 后，评测仍能提供质量趋势，但开销降一个量级。
+  sample_rate: 0.1
   # RAGAS metrics to compute
   # Available: "faithfulness", "answer_relevancy", "context_precision", "context_recall"
   metrics:
