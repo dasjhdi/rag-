@@ -7,6 +7,7 @@ import { useState, useRef, useEffect, type KeyboardEvent, type ChangeEvent } fro
 import { SendHorizontal, Square, Paperclip, X } from 'lucide-react';
 import { ToolSelector } from './ToolSelector';
 import type { ImageData } from '../../types';
+import { VoiceInputButton } from '../common/VoiceInputButton';
 
 export interface AgentChatInputProps {
   onSend: (message: string, selectedTools?: string[], images?: ImageData[]) => void;
@@ -81,6 +82,11 @@ export function AgentChatInput({
 
   const handleCancel = () => {
     onCancel?.();
+  };
+
+  const handleVoiceTranscript = (text: string) => {
+    setInput(prev => (prev ? `${prev} ${text}` : text));
+    textareaRef.current?.focus();
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -259,6 +265,10 @@ export function AgentChatInput({
           multiple
           onChange={handleFileChange}
           className="hidden"
+        />
+        <VoiceInputButton
+          onTranscript={handleVoiceTranscript}
+          disabled={isStreaming}
         />
 
         <textarea

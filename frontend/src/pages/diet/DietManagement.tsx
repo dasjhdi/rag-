@@ -4,6 +4,7 @@
  */
 
 import { useCallback, useEffect, useState, type ChangeEvent } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Calendar,
   ChevronLeft,
@@ -22,6 +23,13 @@ import {
   Beef,
   Croissant,
   Droplet,
+  Sparkles,
+  RefreshCw,
+  SkipForward,
+  Eye,
+  User,
+  Package,
+  Search,
 } from 'lucide-react';
 import { useAuth } from '../../contexts';
 import {
@@ -35,6 +43,10 @@ import {
   updateLog,
   deleteLog,
   getWeeklySummary,
+  generatePlan,
+  getTodayView,
+  replacePlanMeal,
+  skipPlanMeal,
 } from '../../services/api/diet';
 import type {
   DietPlan,
@@ -42,6 +54,7 @@ import type {
   DietLog,
   WeeklySummary,
   DailySummary,
+  TodayView,
 } from '../../types';
 
 // Meal type icons
@@ -113,6 +126,8 @@ interface MealCardProps {
   onEditMeal: (meal: DietPlanMeal) => void;
   onDeleteMeal: (mealId: string) => void;
   onMarkEaten: (mealId: string) => void;
+  onReplaceMeal: (mealId: string) => void;
+  onSkipMeal: (mealId: string) => void;
 }
 
 function MealCard({
@@ -124,6 +139,8 @@ function MealCard({
   onEditMeal,
   onDeleteMeal,
   onMarkEaten,
+  onReplaceMeal,
+  onSkipMeal,
 }: MealCardProps) {
   const mealLogs = logs?.filter(log => log.meal_type === mealType) || [];
   const hasLog = mealLogs.length > 0;
@@ -159,9 +176,26 @@ function MealCard({
           {MEAL_ICONS[mealType]}
           <span className="text-xs font-medium">{MEAL_LABELS[mealType]}</span>
         </div>
-        {hasLog && (
-          <Check className="w-4 h-4 text-green-500" />
-        )}
+        <div className="flex items-center gap-1">
+          {meal?.locked && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500">
+              锁定
+            </span>
+          )}
+          {meal?.status === 'eaten' && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-300">
+              已吃
+            </span>
+          )}
+          {meal?.status === 'skipped' && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-300">
+              已跳过
+            </span>
+          )}
+          {hasLog && (
+            <Check className="w-4 h-4 text-green-500" />
+          )}
+        </div>
       </div>
 
       {/* Content */}
@@ -195,7 +229,7 @@ function MealCard({
 
           {/* Actions */}
           <div className="flex items-center gap-1 pt-1">
-            {!hasLog && !isPast && (
+            {!hasLog && !isPast && meal.status !== 'eaten' && meal.status !== 'skipped' && (
               <button
                 onClick={() => onMarkEaten(meal.id)}
                 className="p-1 text-green-600 hover:bg-green-100 dark:hover:bg-green-900/30 rounded"
@@ -204,20 +238,38 @@ function MealCard({
                 <Check className="w-3.5 h-3.5" />
               </button>
             )}
-            <button
-              onClick={() => onEditMeal(meal)}
-              className="p-1 text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded"
-              title="编辑"
-            >
-              <Edit2 className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={() => onDeleteMeal(meal.id)}
-              className="p-1 text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30 rounded"
-              title="删除"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
+            {!meal.locked && meal.status !== 'eaten' && meal.status !== 'skipped' && (
+              <>
+                <button
+                  onClick={() => onReplaceMeal(meal.id)}
+                  className="p-1 text-amber-600 hover:bg-amber-100 dark:hover:bg-amber-900/30 rounded"
+                  title="替换这道菜"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => onSkipMeal(meal.id)}
+                  className="p-1 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
+                  title="跳过这餐"
+                >
+                  <SkipForward className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => onEditMeal(meal)}
+                  className="p-1 text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded"
+                  title="编辑"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => onDeleteMeal(meal.id)}
+                  className="p-1 text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30 rounded"
+                  title="删除"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </>
+            )}
           </div>
         </div>
       ) : (
@@ -949,6 +1001,9 @@ export default function DietManagementPage() {
   const [dailySummaries, setDailySummaries] = useState<Record<string, DailySummary>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [todayView, setTodayView] = useState<TodayView | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   // Modal states
   const [mealModalOpen, setMealModalOpen] = useState(false);
@@ -1113,6 +1168,63 @@ export default function DietManagementPage() {
     await fetchData();
   };
 
+  // Generate a deterministic weekly plan from the structured profile
+  const handleGeneratePlan = async () => {
+    if (!token) return;
+    setIsGenerating(true);
+    setError(null);
+    setActionMessage(null);
+    try {
+      const result = await generatePlan(token, {
+        week_start_date: formatDate(currentWeekStart),
+      });
+      const warnings = result.diagnostics?.warnings || [];
+      setActionMessage(
+        result.plan
+          ? `已生成 ${result.plan.meals?.length || 0} 个餐次${
+              warnings.length ? `，${warnings.length} 条提示` : ''
+            }`
+          : result.diagnostics?.message || '没有生成计划'
+      );
+      await fetchData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '生成计划失败');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleReplaceMeal = async (mealId: string) => {
+    if (!token) return;
+    try {
+      await replacePlanMeal(token, mealId);
+      setActionMessage('已替换该餐次');
+      await fetchData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '替换餐次失败');
+    }
+  };
+
+  const handleSkipMeal = async (mealId: string) => {
+    if (!token) return;
+    try {
+      await skipPlanMeal(token, mealId);
+      setActionMessage('已跳过该餐次');
+      await fetchData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '跳过餐次失败');
+    }
+  };
+
+  const handleTodayView = async () => {
+    if (!token) return;
+    try {
+      setTodayView(await getTodayView(token));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '加载今日视图失败');
+    }
+  };
+
   // Handle quick log
   const handleQuickLog = async (
     text: string,
@@ -1243,6 +1355,42 @@ export default function DietManagementPage() {
               >
                 <ChevronRight className="w-5 h-5" />
               </button>
+              <button
+                onClick={handleGeneratePlan}
+                disabled={isGenerating}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 text-white text-sm hover:bg-amber-600 disabled:opacity-50"
+              >
+                <Sparkles className="w-4 h-4" />
+                {isGenerating ? '生成中...' : '智能生成计划'}
+              </button>
+              <button
+                onClick={handleTodayView}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-amber-200/60 dark:border-amber-900/40 text-sm hover:bg-amber-100/70 dark:hover:bg-amber-900/20"
+              >
+                <Eye className="w-4 h-4" />
+                今日视图
+              </button>
+              <Link
+                to="/diet/profile"
+                className="inline-flex items-center gap-1 px-3 py-2 rounded-xl border border-amber-200/60 dark:border-amber-900/40 text-sm hover:bg-amber-100/70 dark:hover:bg-amber-900/20"
+              >
+                <User className="w-4 h-4" />
+                档案
+              </Link>
+              <Link
+                to="/diet/pantry"
+                className="inline-flex items-center gap-1 px-3 py-2 rounded-xl border border-amber-200/60 dark:border-amber-900/40 text-sm hover:bg-amber-100/70 dark:hover:bg-amber-900/20"
+              >
+                <Package className="w-4 h-4" />
+                库存
+              </Link>
+              <Link
+                to="/recipes"
+                className="inline-flex items-center gap-1 px-3 py-2 rounded-xl border border-amber-200/60 dark:border-amber-900/40 text-sm hover:bg-amber-100/70 dark:hover:bg-amber-900/20"
+              >
+                <Search className="w-4 h-4" />
+                菜谱
+              </Link>
             </div>
           </div>
 
@@ -1252,6 +1400,73 @@ export default function DietManagementPage() {
         {error && (
           <div className="p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400">
             {error}
+          </div>
+        )}
+
+        {actionMessage && (
+          <div className="p-4 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-lg text-green-700 dark:text-green-300">
+            {actionMessage}
+          </div>
+        )}
+
+        {todayView && (
+          <div className="rounded-2xl border border-blue-200 dark:border-blue-900/50 bg-blue-50/60 dark:bg-blue-900/10 p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                  今日视图 · {todayView.date}
+                </h2>
+                <p className="text-xs text-gray-500 mt-1">
+                  已吃 {todayView.eaten_meals} 餐 · 已跳过 {todayView.skipped_meals} 餐
+                  {todayView.next_meal
+                    ? ` · 下一餐 ${MEAL_LABELS[todayView.next_meal.meal_type] || todayView.next_meal.meal_type}`
+                    : ''}
+                </p>
+              </div>
+              <button
+                onClick={() => setTodayView(null)}
+                className="p-2 rounded-lg text-gray-500 hover:bg-white/60 dark:hover:bg-gray-800"
+                title="关闭今日视图"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            {!todayView.has_plan ? (
+              <div className="mt-3 text-sm text-gray-500">
+                今天还没有计划，可以先点击“智能生成计划”。
+              </div>
+            ) : (
+              <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2">
+                {todayView.meals.map(meal => (
+                  <div
+                    key={meal.id}
+                    className="rounded-xl bg-white dark:bg-gray-900 border border-blue-100 dark:border-blue-900/40 p-3 text-sm"
+                  >
+                    <div className="flex items-center justify-between text-xs text-gray-500">
+                      <span>{MEAL_LABELS[meal.meal_type] || meal.meal_type}</span>
+                      <span
+                        className={
+                          meal.effective_status === 'eaten'
+                            ? 'text-green-600'
+                            : meal.effective_status === 'skipped'
+                              ? 'text-amber-600'
+                              : 'text-blue-600'
+                        }
+                      >
+                        {meal.effective_status === 'eaten'
+                          ? '已吃'
+                          : meal.effective_status === 'skipped'
+                            ? '已跳过'
+                            : '待执行'}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-gray-800 dark:text-gray-100">
+                      {meal.dishes?.map(dish => dish.name).join('、') || '无菜品'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -1423,6 +1638,8 @@ export default function DietManagementPage() {
                           onEditMeal={handleEditMeal}
                           onDeleteMeal={handleDeleteMeal}
                           onMarkEaten={handleMarkEaten}
+                          onReplaceMeal={handleReplaceMeal}
+                          onSkipMeal={handleSkipMeal}
                         />
                       ) : (
                         <LogCard

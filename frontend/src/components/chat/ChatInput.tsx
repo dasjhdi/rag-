@@ -6,6 +6,7 @@
 import { useState, useRef, useEffect, type KeyboardEvent, type ChangeEvent } from 'react';
 import { SendHorizontal, Square, Globe, Paperclip, X } from 'lucide-react';
 import type { ImageData } from '../../types';
+import { VoiceInputButton } from '../common/VoiceInputButton';
 
 /** Extra options that can be enabled per message */
 export interface ExtraOptions {
@@ -88,6 +89,11 @@ export function ChatInput({
 
   const handleCancel = () => {
     onCancel?.();
+  };
+
+  const handleVoiceTranscript = (text: string) => {
+    setInput(prev => (prev ? `${prev} ${text}` : text));
+    textareaRef.current?.focus();
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -268,6 +274,10 @@ export function ChatInput({
           multiple
           onChange={handleFileChange}
           className="hidden"
+        />
+        <VoiceInputButton
+          onTranscript={handleVoiceTranscript}
+          disabled={isStreaming}
         />
 
         <textarea

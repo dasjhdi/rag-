@@ -11,6 +11,11 @@ import RegisterPage from './pages/Register';
 import EvaluationPage from './pages/Evaluation';
 import LLMStatsPage from './pages/LLMStats';
 import DietManagementPage from './pages/diet/DietManagement';
+import DietProfilePage from './pages/diet/DietProfile';
+import PantryPage from './pages/diet/Pantry';
+import RecipeSearchPage from './pages/recipes/RecipeSearch';
+import RecipeDetailPage from './pages/recipes/RecipeDetail';
+import CookingModePage from './pages/recipes/CookingMode';
 
 /**
  * Chat view component - handles both new chat and existing conversation
@@ -573,11 +578,91 @@ function App() {
         }
       />
       <Route
+        path="/diet/profile"
+        element={
+          <RequireAuth>
+            <MainLayout>
+              <DietProfilePage />
+            </MainLayout>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/diet/pantry"
+        element={
+          <RequireAuth>
+            <MainLayout>
+              <PantryPage />
+            </MainLayout>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/recipes"
+        element={
+          <RequireAuth>
+            <MainLayout>
+              <RecipeSearchPage />
+            </MainLayout>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/recipes/:id"
+        element={
+          <RequireAuth>
+            <MainLayout>
+              <RecipeDetailPage />
+            </MainLayout>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/recipes/:id/cook"
+        element={
+          <RequireAuth>
+            <MainLayout>
+              <CookingModePage />
+            </MainLayout>
+          </RequireAuth>
+        }
+      />
+      <Route
         path="/agent/diet"
         element={
           <RequireAuth>
             <MainLayout>
               <DietManagementPage />
+            </MainLayout>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/agent/diet/profile"
+        element={
+          <RequireAuth>
+            <MainLayout>
+              <DietProfilePage />
+            </MainLayout>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/agent/diet/pantry"
+        element={
+          <RequireAuth>
+            <MainLayout>
+              <PantryPage />
+            </MainLayout>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/agent/recipes"
+        element={
+          <RequireAuth>
+            <MainLayout>
+              <RecipeSearchPage />
             </MainLayout>
           </RequireAuth>
         }
