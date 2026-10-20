@@ -32,14 +32,20 @@ CookHero/
 api/
 └── v1/
     └── endpoints/
-        ├── auth.py           # 用户认证接口（注册、登录、令牌刷新）
-        ├── conversation.py   # 对话接口（创建、查询、流式响应）
-        ├── agent.py          # Agent 接口（智能对话、工具调用、会话管理、子代理管理）
-        ├── diet.py           # 饮食管理接口（计划餐次、记录、分析、偏好）
-        ├── evaluation.py     # RAG 评估接口（统计、趋势、告警）
-        ├── llm_stats.py      # LLM 使用统计接口（含工具统计）
-        ├── personal_docs.py  # 个人文档接口（上传、删除、列表）
-        └── user.py           # 用户信息接口（获取、更新）
+        ├── auth.py             # 用户认证接口（注册、登录、令牌刷新）
+        ├── conversation.py     # 对话接口（创建、查询、流式响应）
+        ├── agent.py            # Agent 接口（智能对话、工具调用、会话管理、子代理管理）
+        ├── diet.py             # 饮食闭环接口（档案、周计划生成、餐次、记录、分析、执行率）
+        ├── recipes.py          # 菜谱接口（搜索、详情、相似推荐、反馈、评分、链接/图片导入）
+        ├── pantry.py           # 储物柜接口（库存、临期、购物清单、可做菜）
+        ├── nutrition.py        # 营养接口（估算、单位换算）
+        ├── family.py           # 家庭成员接口
+        ├── constraints.py      # 约束推理接口（纯计算的约束评估）
+        ├── semantic_metrics.py # 语义观测接口（只读运行时指标）
+        ├── evaluation.py       # RAG 评估接口（统计、趋势、告警）
+        ├── llm_stats.py        # LLM 使用统计接口（含工具统计）
+        ├── personal_docs.py    # 个人文档接口（上传、删除、列表）
+        └── user.py             # 用户信息接口（获取、更新）
 ```
 
 **职责**：
@@ -466,27 +472,73 @@ vision/
 
 ### 2.15 饮食管理模块 (`app/diet/`)
 
+承载“档案 → 计划 → 采购 → 烹饪 → 记录 → 反馈”整条闭环。
+
 ```
 diet/
-├── service.py              # 饮食管理服务（计划、记录、分析）
+├── service.py                  # 对外编排（记录、分析、偏好）
 ├── database/
-│   ├── models.py           # 饮食数据模型（计划餐次、记录、偏好）
-│   └── repository.py       # 数据访问层（CRUD、汇总统计）
-├── prompts/
-│   ├── log_parsing.py       # AI 饮食记录解析提示词
-│   └── __init__.py
-└── tools/
-    ├── diet_plan_tool.py   # 计划餐次管理 Tool
-    ├── diet_log_tool.py    # 饮食记录管理 Tool
-    ├── diet_analysis_tool.py # 饮食分析 Tool
-    └── __init__.py
+│   ├── models.py               # 计划、记录、偏好、库存、清单、反馈、评价、家庭成员
+│   └── repository.py           # 数据访问层（CRUD、汇总统计）
+├── profile/service.py          # 结构化饮食档案、有效约束合并
+├── recipes/                    # 菜谱结构化
+│   ├── parser.py               # Markdown → 食材/步骤/耗时/营养/标签
+│   ├── service.py              # 检索、详情、份量缩放、单位换算
+│   ├── repository.py           # 知识库文档查询
+│   ├── importer.py             # 链接导入（JSON-LD 优先，DOM 回退）
+│   └── images.py               # 菜谱图片与缩略图
+├── planning/
+│   ├── generator.py            # 纯函数：候选 → 周计划（七因子打分）
+│   └── service.py              # 编排：档案、候选、过滤、落库、单餐替换
+├── nutrition/service.py        # 本地营养表、单位换算、置信度分级
+├── pantry/service.py           # 库存、购物清单、现有食材可做菜
+├── execution/service.py        # 计划执行：标记已吃、执行率
+├── feedback/service.py         # 反馈权重、评分评论
+├── family/service.py           # 家庭成员与约束合并
+├── prompts/log_parsing.py      # AI 饮食记录解析提示词
+└── tools/                      # 9 个饮食类 Agent 工具
+    ├── diet_plan_tool.py
+    ├── diet_log_tool.py
+    ├── diet_analysis_tool.py
+    ├── recipe_search_tool.py
+    ├── nutrition_calculator_tool.py
+    ├── unit_converter_tool.py
+    ├── pantry_manager_tool.py
+    ├── shopping_list_tool.py
+    └── kitchen_timer_tool.py
 ```
 
 **职责**：
-- 饮食计划（按周/按日）管理，餐次增删改查
-- 饮食记录（手动/AI 文本/AI 图片解析）
-- 每日/每周营养汇总与计划偏差分析
-- 用户饮食偏好、目标信息持久化
+- 结构化饮食档案（过敏原、饮食模式、营养目标、烹饪条件），作为全链路唯一事实源
+- 周计划生成：硬约束过滤 → 七因子打分 → 事务落库；支持单餐替换/跳过/锁定
+- 菜谱结构化：Markdown 解析、份量缩放、单位换算、图片与导入
+- 库存与采购：库存扣减、临期提醒、购物清单、可做菜覆盖率排序
+- 饮食记录与营养分析：手动 / AI 文本 / AI 图片，营养可信度分级（high/medium/low）
+- 反馈与评价：浏览、收藏、做过、喜欢、不喜欢等信号加权，参与推荐排序
+- 家庭：成员约束取并集、份量系数与热量目标合并
+
+---
+
+### 2.16 约束推理模块 (`app/reasoning/`)
+
+```
+reasoning/
+└── constraints/
+    ├── models.py          # Constraint / Profile / Assessment / Decision
+    ├── parser.py          # 从槽位与原文解析硬约束、软约束、未知项
+    ├── conflicts.py       # 冲突检测与澄清问题
+    ├── substitutions.py   # 替代建议
+    ├── evaluator.py       # 食材提取、硬约束过滤、软约束打分、稳定排序
+    └── service.py         # 对外编排入口
+```
+
+**职责**：
+- 规则优先：过敏原、素食/纯素、无麸质、忌口食材由确定性代码判断，不交给模型
+- 可解释：每个被排除的菜品输出“哪条约束、哪个食材、什么原因”
+- 未知保守：无法提取食材时标记 `unknown`，不把未知当成安全
+- 冲突澄清：如“纯素”却要求含鸡蛋，生成澄清问题而非静默选择
+- 全排除回退：候选全部被排除时回退原候选，并提示模型说明限制
+- 对外提供 `POST /api/v1/constraints/evaluate`（纯计算，不写库、不调用 LLM）
 
 ---
 
@@ -504,24 +556,37 @@ frontend/
 │   │   │   ├── MarkdownRenderer.tsx  # Markdown 渲染器
 │   │   │   └── ThinkingBlock.tsx     # 思考过程展示
 │   │   ├── agent/               # Agent 模式组件
-│   │   │   ├── AgentChatInput.tsx    # Agent 输入框
+│   │   │   ├── AgentChatInput.tsx    # Agent 输入框（含语音输入）
 │   │   │   ├── AgentChatWindow.tsx   # Agent 聊天窗口
 │   │   │   ├── AgentMessageBubble.tsx # Agent 消息气泡
-│   │   │   ├── AgentThinkingBlock.tsx # Agent 思考过程
-│   │   │   └── ToolSelector.tsx      # 工具/子代理选择器（动态加载）
+│   │   │   ├── AgentThinkingBlock.tsx # Agent 思考过程与工具轨迹
+│   │   │   └── ToolSelector.tsx      # 工具/MCP/子代理选择器（动态加载，中文名展示）
+│   │   ├── recipes/             # 菜谱相关组件
+│   │   │   └── ImportRecipeModal.tsx # 链接/图片导入菜谱
 │   │   ├── layout/              # 布局组件
 │   │   │   ├── Sidebar.tsx           # 侧边栏（支持 Agent 模式切换）
 │   │   │   └── UserProfileModal.tsx  # 用户资料与子代理配置弹窗
 │   │   ├── common/              # 通用组件
 │   │   │   ├── Modal.tsx             # 模态框
 │   │   │   ├── ThemeToggle.tsx       # 主题切换
-│   │   │   └── CopyButton.tsx        # 复制按钮
+│   │   │   ├── CopyButton.tsx        # 复制按钮
+│   │   │   ├── BackButton.tsx        # 返回按钮
+│   │   │   ├── AuthBrandPanel.tsx    # 登录/注册品牌侧栏
+│   │   │   └── RecipeImage.tsx       # 菜谱图片（含无图兜底）
 │   │   └── KnowledgePanel.tsx   # 知识库面板
+│   ├── constants/        # 常量与文案映射（意图、工具/MCP 中文名等）
 │   ├── pages/            # 页面组件
 │   │   ├── Login.tsx             # 登录页面
 │   │   ├── Register.tsx          # 注册页面
-│   │   ├── diet/                  # 饮食管理页面
-│   │   │   └── DietManagement.tsx # 周计划 + 记录管理
+│   │   ├── diet/                 # 饮食闭环页面
+│   │   │   ├── DietManagement.tsx # 周计划 + 今日视图 + 记录与执行率
+│   │   │   ├── DietProfile.tsx    # 结构化饮食档案 + 家庭成员
+│   │   │   └── Pantry.tsx         # 储物柜与购物清单
+│   │   ├── recipes/              # 菜谱页面
+│   │   │   ├── RecipeSearch.tsx   # 菜谱搜索（含导入入口）
+│   │   │   ├── RecipeLibrary.tsx  # 菜谱图鉴
+│   │   │   ├── RecipeDetail.tsx   # 详情、份量缩放、单位切换、评分评论
+│   │   │   └── CookingMode.tsx    # 烹饪模式（大字步骤 + 计时器）
 │   │   ├── Evaluation.tsx        # RAG 评估统计页面
 │   │   └── LLMStats.tsx          # LLM 使用统计页面
 │   ├── services/         # API 服务

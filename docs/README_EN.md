@@ -29,13 +29,16 @@
 
 **CookHero** is a personalized diet management platform powered by LLM, RAG, Agents, multimodal models, and nutrition analytics. It is more than a recipe library—it is your “diet hero assistant” that helps you plan, log, analyze, and improve daily eating habits end-to-end.
 
+Unlike Q&A-only diet assistants, CookHero closes the whole loop: **understand constraints → generate a plan → fill the pantry gaps → cook step by step → log what was actually eaten → review and adjust**. Everything that cannot afford to be wrong—allergen filtering, nutrition balancing, pantry deduction, unit conversion—is handled by deterministic code; the model handles understanding, explanation, and generation.
+
 - 🔍 **Smart Q&A**: Answer cooking techniques, ingredient pairings, and nutrition questions
-- 🍽️ **Personalized Recommendations**: Suggest dishes aligned with goals and dietary restrictions
-- 🗓️ **Meal Planning**: Weekly meal planning for breakfast/lunch/dinner/snacks
-- 🧾 **AI Logging**: One-click text/image logging with estimated nutrition
-- 📊 **Nutrition Analytics**: Daily/weekly summaries with plan vs actual deviation insights
-- 🧠 **Deep Understanding**: Multi-turn conversations for precise action suggestions
-- 🌐 **Real-time Search**: Integrate web search for the latest cooking trends
+- 🗓️ **Meal Planning**: Generate a full week from your profile and nutrition goals; replace or lock any meal
+- 🛒 **Pantry & Shopping**: Track what you have, get expiry alerts, and generate a shopping list with stock deducted
+- 🍳 **Cooking Aid**: Structured recipes, serving scaling, unit conversion, large-type steps and a kitchen timer
+- 🧾 **AI Logging**: One-click text/image/voice logging with estimated nutrition
+- 📊 **Nutrition Review**: Daily/weekly summaries, plan-vs-actual deviation, today view and adherence rate
+- 🛡️ **Constraint Reasoning**: Deterministic allergen and diet filtering, explainable down to the ingredient
+- 🧠 **Deep Understanding**: Multi-label intent + slot filling + confidence, with clarification signals
 
 CookHero is built for kitchen beginners, fitness/weight-loss users, glycemic control scenarios, allergy-sensitive users, and family kitchens—making cooking more professional, intelligent, and sustainable.
 
@@ -46,9 +49,12 @@ CookHero is built for kitchen beginners, fitness/weight-loss users, glycemic con
 ## ⚡ Technical Highlights
 
 - **LLM + RAG Hybrid Retrieval**: Vector + BM25 + reranker with multi-level caching
+- **Constraint Reasoning Engine**: Deterministic hard-constraint filtering + soft-constraint scoring, every exclusion explainable
+- **Deterministic Meal Planning**: Seven-factor scoring with transactional persistence—same input, same output
 - **Agent ToolHub**: ReAct reasoning with tool calls and MCP extensibility
 - **Subagent Expert System**: Built-in + user-defined subagents, enabled on demand
 - **Multimodal Parsing**: Image understanding for cooking and diet logging
+- **Semantic Evaluation & Telemetry**: Per-intent/per-bucket metrics, confusion pairs, offline multi-query A/B, index fingerprints
 - **Quality & Observability**: RAGAS evaluation + LLM usage analytics dashboards
 - **Security by Design**: Prompt injection guardrails, rate limiting, audit logs
 - **Modern Full Stack**: FastAPI + React + PostgreSQL + Milvus + Redis + MinIO
@@ -75,33 +81,43 @@ CookHero is built for kitchen beginners, fitness/weight-loss users, glycemic con
 - **Execution Tracing**: Layered traces for Agent and Subagent output
 - **Tool Selection**: Frontend can dynamically select tools and subagents
 
-### 2. Meal Planning & Logging
+### 2. End-to-End Diet Loop
+- **Structured Profile**: allergens and severity, dietary patterns (vegetarian/vegan/gluten-free), avoided and preferred foods, calorie/protein/fat/carb/fiber/sodium goals, cooking conditions (meals per day, skill, max cook time, budget, spice level, unit system, household size). The profile is the single source of truth for chat, planning, and recommendations.
+- **Deterministic Weekly Plan**: candidates are filtered by hard constraints, then scored by calorie/protein deviation, repetition penalty, same-day duplication, cook-time overrun, cuisine match, feedback score, and pantry coverage—then persisted in one transaction. Meals can be replaced, skipped, or locked; locked meals are never overwritten.
+- **Constraint Reasoning**: hard constraints (allergens, vegetarian/vegan, gluten-free, avoided ingredients) are decided by deterministic code, not by the model. Unknown ingredients are marked `unknown` rather than treated as safe; conflicts trigger clarification; full exclusion falls back with an explicit risk note.
+- **Recipe Structure**: Markdown recipes are parsed into ingredients, quantities, steps, duration, nutrition, allergens and diet tags—with serving scaling (untouched for “to taste”) and unit conversion.
+- **Pantry & Shopping**: stock is deducted before the shopping list is generated; expiring items are flagged; “what can I cook now” is ranked by ingredient coverage.
+- **Cooking Mode**: full-screen large-type steps, step navigation, timer and screen-awake.
+- **Logging & Feedback**: manual / AI-text / AI-image logging with nutrition confidence levels (high/medium/low); view, favorite, cooked, like, dislike signals feed back into ranking.
+- **Family**: members' constraints are merged (allergens unioned as hard constraints, portions and calorie targets summed).
+
+### 3. Meal Planning & Logging
 - Weekly planning for breakfast/lunch/dinner/snacks
 - Planned meals automatically summarize calories and macros
 - One-click "mark as eaten" converts plan to log entries
 - AI parses text/image diet descriptions with estimated nutrition
 - Support for updating, copying, and annotating meals
 
-### 3. Nutrition Analytics & Goal Tracking
+### 4. Nutrition Analytics & Goal Tracking
 - Daily/weekly nutrition summaries (calories, protein, fat, carbs)
 - Plan vs actual deviation analysis to surface habit drift
 - Goal management for calorie/protein/fat/carb targets
 - Data source tracking: manual, AI text, AI image
 
-### 4. Intelligent Conversational Queries
+### 5. Intelligent Conversational Queries
 - Natural language understanding of user needs (e.g., "I want to make a low-fat, high-protein dinner")
 - Multi-turn conversation support with context history
 - Automatic intent recognition (query, recommendation, chat, etc.)
 - Streaming responses with real-time display
 
-### 5. Hybrid Retrieval & Reranking
+### 6. Hybrid Retrieval & Reranking
 - **Vector Retrieval**: Semantic similarity matching (based on Milvus)
 - **BM25 Retrieval**: Keyword exact matching
 - **Metadata Filtering**: Filter by cooking time, difficulty, nutrition, etc.
 - **Smart Reranking**: Use Reranker models (e.g., Qwen3-Reranker) for secondary precision ranking
 - **Multi-level Caching**: Redis + Milvus dual-layer caching for improved response speed
 
-### 6. Personalized Profiles & Knowledge Base
+### 7. Personalized Profiles & Knowledge Base
 - Users can upload personal recipes, automatically analyzed and indexed
 - Global recipe library (from [HowToCook](https://github.com/Anduin2017/HowToCook)) merged with personal recipes
 - Intelligent parsing of Markdown format recipes
@@ -109,28 +125,28 @@ CookHero is built for kitchen beginners, fitness/weight-loss users, glycemic con
 - Customizable model response style
 - Support for OpenAI-compatible custom model integration
 
-### 7. Multimodal Support
+### 8. Multimodal Support
 - **Image Recognition**: Upload food/ingredient/diet images for intelligent identification
 - **Intent Understanding**: Combine images and text to understand complete user intent
 - **Multiple Scenarios**: Dish identification, ingredient recognition, cooking guidance, diet logging, recipe queries
 - **Flexible Integration**: Support for OpenAI-compatible vision model APIs
 - **Image Limits**: Up to 4 images, 10MB per image (Agent/diet logging)
 
-### 8. RAG Evaluation System
+### 9. RAG Evaluation System
 - **Quality Monitoring**: Automated evaluation based on the RAGAS framework
 - **Core Metrics**: Faithfulness, Answer Relevancy
 - **Async Evaluation**: Background asynchronous execution without affecting response speed
 - **Trend Analysis**: Support for evaluation trend viewing and quality alerts
 - **Data Persistence**: Evaluation results stored in PostgreSQL
 
-### 9. LLM Usage Statistics
+### 10. LLM Usage Statistics
 - **Real-time Monitoring**: Track Token usage for each request
 - **Performance Metrics**: Record response time, thinking time, generation time
 - **Statistical Analysis**: Usage statistics by user, session, and module
 - **Tool Tracking**: Record Agent tool call names
 - **Visualization**: Frontend LLM statistics page
 
-### 10. Security Protection System
+### 11. Security Protection System
 - **Multi-layer Defense**: Input validation → Pattern detection → LLM deep detection
 - **Prompt Injection Protection**: Dual detection mechanism based on rules and AI
 - **Rate Limiting**: Redis sliding window algorithm with endpoint-specific limits
@@ -373,15 +389,22 @@ See comments in `config.yml` for detailed explanations.
 - [x] **LLM Usage Statistics**: Token monitoring, performance analysis page ✅
 - [x] **Agent Intelligent Mode**: ReAct reasoning, tool invocation, session management ✅
 - [x] **Subagent Expert System**: Built-in/custom subagents with visual traces ✅
-- [x] **MCP Protocol Support**: Remote tool loading, Amap integration ✅
+- [x] **MCP Protocol Support**: Remote tool loading, Amap integration, localized tool names ✅
 - [x] **AI Image Generation**: DALL-E 3 integration, imgbb persistent storage ✅
 - [x] **Diet Planning & Logging**: Weekly plans, mark-as-eaten, AI logging ✅
-- [x] **Nutrition Analytics & Goals**: Daily/weekly summaries, deviation analysis ✅
-- [ ] **Voice Interaction**: Voice input queries, voice step narration
-- [ ] **Community Features**: User sharing, ratings, comments
-- [ ] **Smart Ingredient Management**: Fridge inventory, expiration reminders
+- [x] **Nutrition Analytics & Goals**: Daily/weekly summaries, deviation analysis, confidence levels ✅
+- [x] **Constraint Reasoning Engine**: Deterministic allergen filtering, soft-constraint scoring, conflict clarification ✅
+- [x] **Structured Diet Profile**: Allergens, dietary patterns, nutrition goals, cooking conditions ✅
+- [x] **Deterministic Meal Planning**: Seven-factor scoring, transactional persistence, replace and lock ✅
+- [x] **Pantry & Shopping List**: Stock deduction, expiry alerts, cook-what-you-have ✅
+- [x] **Recipe Detail & Cooking Mode**: Serving scaling, unit conversion, large-type steps and timer ✅
+- [x] **Family & Portions**: Member constraint merging, portion factors ✅
+- [x] **Feedback & Reviews**: Favorite/cooked/like/dislike signals, ratings and comments ✅
+- [x] **Voice Input**: Speech-to-text via the Web Speech API ✅
+- [ ] **Voice Narration**: Read cooking steps aloud
+- [ ] **Community Features**: User sharing, rating aggregation, comments
 - [ ] **AR Cooking Guidance**: Augmented reality cooking assistance
-- [ ] **More Agent Tools**: Recipe search, nutrition calculation, shopping list generation
+- [ ] **Real-user Validation**: Small-scale rollout to drive retrieval and ranking with real data
 
 ---
 
