@@ -6,6 +6,7 @@
 import { useEffect, useId, useState } from 'react';
 import { ChevronDown, ChevronRight, ChevronUp, Loader2, CheckCircle2, Cpu, AlertCircle, Clock, Play, ArrowRight } from 'lucide-react';
 import { MarkdownRenderer } from '../chat/MarkdownRenderer';
+import { getToolLabel } from '../../constants';
 
 export interface TraceStep {
   error: string | null;
@@ -236,8 +237,11 @@ function TraceStepItem({ step }: { step: TraceStep }) {
           {style.label}
         </span>
         {hasToolCalls && step.tool_calls![0] && (
-          <span className="text-xs font-mono text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">
-            {step.tool_calls![0].name}
+          <span
+            className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded"
+            title={step.tool_calls![0].name}
+          >
+            {getToolLabel(step.tool_calls![0].name)}
           </span>
         )}
       </div>

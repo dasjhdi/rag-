@@ -20,6 +20,7 @@ import {
   getAvailableTools,
 } from '../../services/api';
 import { useAuth, useTheme } from '../../contexts';
+import { getToolLabel } from '../../constants';
 import type { SubagentSchema, ToolSchema } from '../../types';
 
 export interface UserProfileModalProps {
@@ -1216,7 +1217,9 @@ function AgentTab({
                           }}
                           className="hidden"
                         />
-                        <span>{tool.name}</span>
+                        <span title={`${getToolLabel(tool.name)}（${tool.name}）`}>
+                          {getToolLabel(tool.name)}
+                        </span>
                       </label>
                     );
                   })

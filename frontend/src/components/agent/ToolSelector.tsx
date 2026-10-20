@@ -13,6 +13,7 @@ import { useState, useEffect, useCallback, useRef, memo, useMemo } from 'react';
 import { ChevronDown, ChevronUp, Wrench, Globe, Check, Info, Bot, Loader2 } from 'lucide-react';
 import type { ServerInfo, ToolSchema, SubagentSchema } from '../../types';
 import { getAvailableTools, listSubagents, toggleSubagent } from '../../services/api/agent';
+import { getServerLabel, getToolLabel } from '../../constants';
 
 export interface ToolSelectorProps {
   token?: string;
@@ -40,10 +41,8 @@ const ToolChip = memo(function ToolChip({
   disabled?: boolean;
   serverType: string;
 }) {
-  // For MCP tools, remove prefix for shorter display
-  const displayName = serverType === 'mcp'
-    ? tool.name.replace(/^mcp_\w+_/, '')
-    : tool.name;
+  // 统一用中文名展示；英文标识只保留在 title 提示里
+  const displayName = getToolLabel(tool.name);
 
   // Colors based on server type
   const isLocal = serverType === 'local';
@@ -73,7 +72,9 @@ const ToolChip = memo(function ToolChip({
         `}
       >
         {isSelected && <Check className="w-3 h-3" />}
-        <span>{displayName}</span>
+        <span title={`${displayName}（${tool.name}）\n${tool.description ?? ''}`}>
+          {displayName}
+        </span>
       </div>
 
       {/* Info icon */}
@@ -211,8 +212,11 @@ const ServerCard = memo(function ServerCard({
         onClick={onToggleExpand}
       >
         <ServerIcon className={`w-3.5 h-3.5 ${iconColorClass}`} />
-        <span className="text-xs font-medium text-gray-700 dark:text-gray-300 flex-1">
-          {server.name}
+        <span
+          className="text-xs font-medium text-gray-700 dark:text-gray-300 flex-1"
+          title={`${getServerLabel(server.name)}（${server.name}）`}
+        >
+          {getServerLabel(server.name)}
         </span>
         <span className="text-xs text-gray-500 dark:text-gray-400">
           {selectedCount}/{server.tools.length}
@@ -232,7 +236,7 @@ const ServerCard = memo(function ServerCard({
             hover:opacity-80
           `}
         >
-          {allSelected ? 'Deselect All' : 'Select All'}
+          {allSelected ? '取消全选' : '全选'}
         </button>
         {isExpanded ? (
           <ChevronUp className="w-4 h-4 text-gray-400" />
@@ -259,15 +263,18 @@ const ServerCard = memo(function ServerCard({
               />
             ))}
             {server.tools.length === 0 && (
-              <span className="text-xs text-gray-400">No tools available</span>
+              <span className="text-xs text-gray-400">暂无可用工具</span>
             )}
           </div>
 
           {/* Tool description - shown at bottom when info icon is clicked */}
           {infoTool && infoTool.description && (
             <div className="mt-2 p-2 bg-gray-100 dark:bg-gray-700 rounded-lg">
-              <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                {infoTool.name}
+              <div
+                className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
+                title={infoTool.name}
+              >
+                {getToolLabel(infoTool.name)}
               </div>
               <div className="text-xs text-gray-600 dark:text-gray-400">
                 {infoTool.description}
@@ -545,7 +552,7 @@ export function ToolSelector({
           `}
         >
           <Wrench className="w-4 h-4 text-orange-500" />
-          <span className="font-medium">Tools</span>
+          <span className="font-medium">工具</span>
           <span className="text-xs text-gray-500 dark:text-gray-400">
             ({builtinSelectedCount}/{builtinTools.length})
           </span>
@@ -579,12 +586,12 @@ export function ToolSelector({
             `}
           >
             <Globe className="w-4 h-4 text-blue-500" />
-            <span className="font-medium">MCP</span>
+            <span className="font-medium">MCP 服务</span>
             <span className="text-xs text-gray-500 dark:text-gray-400">
               ({mcpSelectedCount}/{mcpTools.length})
             </span>
             <span className="text-xs text-gray-400 dark:text-gray-500">
-              {mcpServers.length} server{mcpServers.length > 1 ? 's' : ''}
+              {mcpServers.length} 个服务
             </span>
             {isMCPExpanded ? (
               <ChevronUp className="w-4 h-4" />
@@ -617,7 +624,7 @@ export function ToolSelector({
             `}
           >
             <Bot className="w-4 h-4 text-purple-500" />
-            <span className="font-medium">Agents</span>
+            <span className="font-medium">智能体</span>
             <span className="text-xs text-gray-500 dark:text-gray-400">
               ({subagentSelectedCount}/{subagents.length})
             </span>
@@ -638,7 +645,7 @@ export function ToolSelector({
             <>
               {isLoading ? (
                 <div className="text-sm text-gray-500 dark:text-gray-400 text-center py-2">
-                  Loading tools...
+                  加载工具中…
                 </div>
               ) : error ? (
                 <div className="text-sm text-red-500 text-center py-2">
@@ -659,7 +666,7 @@ export function ToolSelector({
                 ))
               ) : (
                 <div className="text-sm text-gray-500 dark:text-gray-400 text-center py-2">
-                  No built-in tools available
+                  暂无内置工具
                 </div>
               )}
             </>
@@ -690,7 +697,7 @@ export function ToolSelector({
                 <div className="flex items-center justify-center gap-2 py-2">
                   <Loader2 className="w-4 h-4 animate-spin text-purple-500" />
                   <span className="text-sm text-gray-500 dark:text-gray-400">
-                    Loading agents...
+                    加载智能体中…
                   </span>
                 </div>
               ) : subagentError ? (
@@ -724,7 +731,7 @@ export function ToolSelector({
                         </span>
                         {infoAgent.builtin && (
                           <span className="text-xs px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 rounded">
-                            Built-in
+                            内置
                           </span>
                         )}
                       </div>
@@ -733,7 +740,7 @@ export function ToolSelector({
                       </p>
                       {infoAgent.tools.length > 0 && (
                         <div className="text-xs text-gray-500 dark:text-gray-500">
-                          <span className="font-medium">Tools:</span>{' '}
+                          <span className="font-medium">可用工具：</span>{' '}
                           {infoAgent.tools.join(', ')}
                         </div>
                       )}
@@ -742,7 +749,7 @@ export function ToolSelector({
                 </>
               ) : (
                 <div className="text-sm text-gray-500 dark:text-gray-400 text-center py-2">
-                  No agents available
+                  暂无可用智能体
                 </div>
               )}
             </>
