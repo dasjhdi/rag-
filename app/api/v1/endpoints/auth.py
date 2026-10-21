@@ -104,6 +104,9 @@ async def login(request: LoginRequest, http_request: Request):
     # Clear failed attempts on successful login
     await auth_service.clear_failed_attempts(request.username)
 
+    # Record activity for the admin console (best effort, never blocks login)
+    await auth_service.touch_last_login(user.username)
+
     token = auth_service.create_access_token(user)
     audit_logger.login_success(
         username=user.username,

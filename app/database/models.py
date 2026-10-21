@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from sqlalchemy import (
+    Boolean,
     Column,
     DateTime,
     Enum as SQLEnum,
@@ -26,6 +27,11 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 class Base(DeclarativeBase):
     """Base class for all ORM models."""
     pass
+
+
+# Roles that are allowed to access the admin API. Kept in one place so the
+# guard, the bootstrap SQL and the frontend hint never drift apart.
+ADMIN_ROLES: frozenset[str] = frozenset({"viewer", "support", "ops", "super_admin"})
 
 
 # ==================== User Model ====================
@@ -48,10 +54,25 @@ class UserModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False
     )
+    # Access control: "user" | "viewer" | "support" | "ops" | "super_admin"
+    role: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="user", server_default="user"
+    )
+    # Disabled accounts are rejected at login and by the admin guard.
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
+    # Updated on every successful login; used for activity analysis.
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     __table_args__ = (
         Index("ix_users_username", "username", unique=True),
     )
+
+    @property
+    def is_admin(self) -> bool:
+        """True when the account holds any admin role."""
+        return self.role in ADMIN_ROLES
 
     def to_dict(self) -> dict:
         return {

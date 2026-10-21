@@ -11,7 +11,7 @@ from typing import Optional, Tuple
 
 import bcrypt
 from jose import jwt
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from redis.asyncio import Redis
 
@@ -145,7 +145,24 @@ class AuthService:
             return None
         if not self._verify_password(password, user.password_hash):
             return None
+        # Disabled accounts must not be able to log in, even with a valid password.
+        if not getattr(user, "is_active", True):
+            logger.warning("Rejected login for disabled user %s", username)
+            return None
         return user
+
+    async def touch_last_login(self, username: str) -> None:
+        """Record a successful login timestamp (best effort, never blocks login)."""
+        try:
+            async with get_session_context() as session:
+                stmt = (
+                    update(UserModel)
+                    .where(UserModel.username == username)
+                    .values(last_login_at=datetime.utcnow())
+                )
+                await session.execute(stmt)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Failed to update last_login_at for %s: %s", username, exc)
 
     # ------------------------------------------------------------------
     # Token management

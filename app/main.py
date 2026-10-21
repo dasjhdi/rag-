@@ -20,6 +20,7 @@ from app.api.v1.endpoints import (
     pantry,
     nutrition,
     family,
+    admin,
 )
 from app.config import settings
 from app.database.session import init_db, close_db
@@ -230,6 +231,7 @@ app.include_router(
     prefix=settings.API_V1_STR,
     tags=["Constraints"],
 )
+app.include_router(admin.router, prefix=settings.API_V1_STR, tags=["Admin"])
 
 
 @app.get("/")

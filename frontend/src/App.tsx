@@ -17,6 +17,7 @@ import RecipeSearchPage from './pages/recipes/RecipeSearch';
 import RecipeLibraryPage from './pages/recipes/RecipeLibrary';
 import RecipeDetailPage from './pages/recipes/RecipeDetail';
 import CookingModePage from './pages/recipes/CookingMode';
+import AdminConsolePage from './pages/admin/AdminConsole';
 
 /**
  * Chat view component - handles both new chat and existing conversation
@@ -238,6 +239,7 @@ function MainLayout({ children }: { children: React.ReactNode }) {
   const isKnowledgeView = location.pathname.includes('/knowledge');
   const isEvaluationView = location.pathname.includes('/evaluation');
   const isLLMStatsView = location.pathname.includes('/llm-stats');
+  const isAdminView = location.pathname.startsWith('/admin');
   const isDietView = location.pathname.includes('/diet');
   const isDietSubView = /\/diet\/(profile|pantry)/.test(location.pathname);
   const isRecipeView = location.pathname.startsWith('/recipes');
@@ -267,7 +269,9 @@ function MainLayout({ children }: { children: React.ReactNode }) {
   const crumbs = useMemo(() => {
     const dietBase = isAgentMode ? '/agent/diet' : '/diet';
     const result: { label: string; to?: string }[] = [];
-    if (isDietView) {
+    if (isAdminView) {
+      result.push({ label: '管理后台' });
+    } else if (isDietView) {
       result.push({ label: '饮食管理', to: dietBase });
       if (/\/diet\/profile/.test(location.pathname)) result.push({ label: '饮食档案' });
       else if (/\/diet\/pantry/.test(location.pathname)) result.push({ label: '储物柜' });
@@ -288,7 +292,7 @@ function MainLayout({ children }: { children: React.ReactNode }) {
       result.push({ label: sectionLabel });
     }
     return result;
-  }, [location.pathname, isDietView, isRecipeView, isRecipeLibraryView, isKnowledgeView, isEvaluationView, isLLMStatsView, isAgentMode, sectionLabel]);
+  }, [location.pathname, isDietView, isRecipeView, isRecipeLibraryView, isKnowledgeView, isEvaluationView, isLLMStatsView, isAdminView, isAgentMode, sectionLabel]);
 
   useEffect(() => {
     setIsAnalyticsMenuOpen(false);
@@ -638,6 +642,16 @@ function App() {
           <RequireAuth>
             <MainLayout>
               <LLMStatsPage />
+            </MainLayout>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/admin"
+        element={
+          <RequireAuth>
+            <MainLayout>
+              <AdminConsolePage />
             </MainLayout>
           </RequireAuth>
         }

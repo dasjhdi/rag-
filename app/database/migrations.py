@@ -12,6 +12,10 @@ logger = logging.getLogger(__name__)
 
 
 _COLUMN_MIGRATIONS: tuple[tuple[str, str, str], ...] = (
+    # Admin console: access control + activity tracking on users
+    ("users", "role", "VARCHAR(20) NOT NULL DEFAULT 'user'"),
+    ("users", "is_active", "BOOLEAN NOT NULL DEFAULT TRUE"),
+    ("users", "last_login_at", "TIMESTAMP"),
     ("diet_plan_meals", "status", "VARCHAR(20) NOT NULL DEFAULT 'planned'"),
     ("diet_plan_meals", "locked", "BOOLEAN NOT NULL DEFAULT FALSE"),
     ("diet_plan_meals", "generation_batch_id", "VARCHAR(64)"),
