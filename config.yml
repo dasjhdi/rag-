@@ -348,3 +348,33 @@ paths:
 
 blank_issues_enabled: true
 contact_links: []
+
+# =============================================================================
+# 14. Admin Pricing (Optional)
+# =============================================================================
+# 后台"用量看板"的成本估算单价，单位为「元 / 千 token」。
+# 仅用于展示与趋势判断，不是账单依据；不同供应商/合约价请按实际填写。
+# 未列出的模型使用 default 兜底。
+# =============================================================================
+
+pricing:
+  currency: "CNY"
+  default:
+    input: 0.002
+    output: 0.006
+  models:
+    "deepseek-ai/DeepSeek-V3.2":
+      input: 0.002
+      output: 0.008
+    "Qwen/Qwen3-VL-30B-A3B-Instruct":
+      input: 0.003
+      output: 0.009
+    "qwen3.7-flash":
+      input: 0.0005
+      output: 0.0015
+    "qwen3.8-flash":
+      input: 0.0005
+      output: 0.0015
+    "glm-5.3":
+      input: 0.001
+      output: 0.003

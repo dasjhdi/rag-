@@ -1,7 +1,7 @@
 // src/App.tsx
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import type { ReactElement } from 'react';
-import { BarChart3, BookOpen, Menu, LogOut, Utensils, ChevronDown } from 'lucide-react';
+import { BarChart3, BookOpen, Menu, LogOut, Settings, Utensils, ChevronDown } from 'lucide-react';
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ChatWindow, ChatInput, Sidebar, KnowledgePanel } from './components';
 import { AgentChatWindow, AgentChatInput } from './components/agent';
@@ -18,6 +18,7 @@ import RecipeLibraryPage from './pages/recipes/RecipeLibrary';
 import RecipeDetailPage from './pages/recipes/RecipeDetail';
 import CookingModePage from './pages/recipes/CookingMode';
 import AdminConsolePage from './pages/admin/AdminConsole';
+import { getAdminWhoami } from './services/api/admin';
 
 /**
  * Chat view component - handles both new chat and existing conversation
@@ -173,10 +174,30 @@ function ChatView() {
  * Main layout component with sidebar
  */
 function MainLayout({ children }: { children: React.ReactNode }) {
-  const { username, logout } = useAuth();
+  const { username, logout, token } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const isAgentMode = location.pathname.startsWith('/agent');
+
+  // 仅有后台权限的账号才显示"管理后台"入口；真正的权限校验在服务端。
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => {
+    if (!token) {
+      setIsAdmin(false);
+      return;
+    }
+    let cancelled = false;
+    getAdminWhoami(token)
+      .then((res) => {
+        if (!cancelled) setIsAdmin(res.is_admin);
+      })
+      .catch(() => {
+        if (!cancelled) setIsAdmin(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   // Standard Chat Context
   const {
@@ -509,6 +530,16 @@ function MainLayout({ children }: { children: React.ReactNode }) {
                 </div>
               )}
             </div>
+            {isAdmin && (
+              <button
+                onClick={() => navigate('/admin')}
+                className={`ch-nav-pill ${isAdminView ? 'ch-nav-pill-active' : ''}`}
+                title="管理后台"
+              >
+                <Settings className="w-4 h-4" />
+                <span className="hidden sm:inline">管理后台</span>
+              </button>
+            )}
             {username && (
               <div className="flex items-center gap-1.5 ml-1 pl-2 border-l border-cream-300/60 dark:border-white/10 shrink-0">
                 <div className="w-7 h-7 rounded-full ch-avatar flex items-center justify-center text-[11px] font-bold">

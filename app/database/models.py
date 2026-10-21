@@ -419,3 +419,42 @@ class LLMUsageLogModel(Base):
             "duration_ms": self.duration_ms,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
+
+
+# ==================== Admin Audit Log ====================
+
+
+class AdminAuditLogModel(Base):
+    """后台写操作的审计记录。
+
+    只记录"谁、在什么时候、对谁、做了什么、改前改后"，不记录密码明文。
+    后台任何写接口都必须先落一条记录，再返回成功。
+    """
+
+    __tablename__ = "admin_audit_logs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    actor_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
+    actor_username: Mapped[str] = mapped_column(String(255), nullable=False)
+    action: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    target_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    target_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
+    detail: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    ip: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, nullable=False, index=True
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": str(self.id),
+            "actor_username": self.actor_username,
+            "action": self.action,
+            "target_type": self.target_type,
+            "target_id": self.target_id,
+            "detail": self.detail,
+            "ip": self.ip,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
