@@ -17,6 +17,7 @@ export const CONVERSATIONS_PAGE_SIZE = 30;
 // Storage Keys
 export const STORAGE_KEYS = {
   TOKEN: 'cookhero_token',
+  REFRESH: 'cookhero_refresh_token',
   USERNAME: 'cookhero_username',
   THEME: 'theme',
   STREAMING_CACHE: 'cookhero_streaming_cache',

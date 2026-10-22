@@ -40,6 +40,7 @@ export async function parseErrorResponse(response: Response): Promise<string> {
   // Handle 401 Unauthorized - clear auth data
   if (response.status === 401) {
     localStorage.removeItem(STORAGE_KEYS.TOKEN);
+    localStorage.removeItem(STORAGE_KEYS.REFRESH);
     localStorage.removeItem(STORAGE_KEYS.USERNAME);
     // Dispatch custom event to notify auth context
     window.dispatchEvent(new Event('auth-unauthorized'));
@@ -94,12 +95,70 @@ function friendlyMessageFor(msg: string, ctx?: Record<string, unknown>): string 
 }
 
 /**
+ * 单飞（single-flight）刷新：并发 401 只触发一次 /auth/refresh。
+ * 刷新成功后写入 localStorage 并广播事件，AuthContext 据此更新内存中的 token。
+ */
+let refreshPromise: Promise<string | null> | null = null;
+
+async function refreshAccessToken(): Promise<string | null> {
+  const refreshTokenValue = localStorage.getItem(STORAGE_KEYS.REFRESH);
+  if (!refreshTokenValue) return null;
+
+  if (!refreshPromise) {
+    refreshPromise = fetch(`${API_BASE}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshTokenValue }),
+    })
+      .then(async (res) => {
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (!data?.access_token) return null;
+        localStorage.setItem(STORAGE_KEYS.TOKEN, data.access_token);
+        if (data.refresh_token) {
+          localStorage.setItem(STORAGE_KEYS.REFRESH, data.refresh_token);
+        }
+        window.dispatchEvent(
+          new CustomEvent('auth:token-refreshed', { detail: data.access_token })
+        );
+        return data.access_token as string;
+      })
+      .catch(() => null)
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+
+  return refreshPromise;
+}
+
+/**
+ * 发起请求；遇到 401 时先尝试用刷新令牌续期并重试一次。
+ */
+async function send(url: string, init: RequestInit, token?: string): Promise<Response> {
+  let response = await fetch(url, init);
+
+  if (response.status === 401 && token) {
+    const fresh = await refreshAccessToken();
+    if (fresh) {
+      const headers = new Headers(init.headers as HeadersInit | undefined);
+      headers.set('Authorization', `Bearer ${fresh}`);
+      response = await fetch(url, { ...init, headers });
+    }
+  }
+
+  return response;
+}
+
+/**
  * Make a GET request
  */
 export async function apiGet<T>(endpoint: string, token?: string): Promise<T> {
-  const response = await fetch(`${API_BASE}${endpoint}`, {
-    headers: createAuthHeaders(token),
-  });
+  const response = await send(
+    `${API_BASE}${endpoint}`,
+    { headers: createAuthHeaders(token) },
+    token
+  );
 
   if (!response.ok) {
     const msg = await parseErrorResponse(response);
@@ -117,11 +176,15 @@ export async function apiPost<T, D = unknown>(
   data: D,
   token?: string
 ): Promise<T> {
-  const response = await fetch(`${API_BASE}${endpoint}`, {
-    method: 'POST',
-    headers: createJsonHeaders(token),
-    body: JSON.stringify(data),
-  });
+  const response = await send(
+    `${API_BASE}${endpoint}`,
+    {
+      method: 'POST',
+      headers: createJsonHeaders(token),
+      body: JSON.stringify(data),
+    },
+    token
+  );
 
   if (!response.ok) {
     const msg = await parseErrorResponse(response);
@@ -139,11 +202,15 @@ export async function apiPut<T, D = unknown>(
   data: D,
   token?: string
 ): Promise<T> {
-  const response = await fetch(`${API_BASE}${endpoint}`, {
-    method: 'PUT',
-    headers: createJsonHeaders(token),
-    body: JSON.stringify(data),
-  });
+  const response = await send(
+    `${API_BASE}${endpoint}`,
+    {
+      method: 'PUT',
+      headers: createJsonHeaders(token),
+      body: JSON.stringify(data),
+    },
+    token
+  );
 
   if (!response.ok) {
     const msg = await parseErrorResponse(response);
@@ -161,11 +228,15 @@ export async function apiPatch<T, D = unknown>(
   data: D,
   token?: string
 ): Promise<T> {
-  const response = await fetch(`${API_BASE}${endpoint}`, {
-    method: 'PATCH',
-    headers: createJsonHeaders(token),
-    body: JSON.stringify(data),
-  });
+  const response = await send(
+    `${API_BASE}${endpoint}`,
+    {
+      method: 'PATCH',
+      headers: createJsonHeaders(token),
+      body: JSON.stringify(data),
+    },
+    token
+  );
 
   if (!response.ok) {
     const msg = await parseErrorResponse(response);
@@ -179,10 +250,11 @@ export async function apiPatch<T, D = unknown>(
  * Make a DELETE request
  */
 export async function apiDelete<T>(endpoint: string, token?: string): Promise<T> {
-  const response = await fetch(`${API_BASE}${endpoint}`, {
-    method: 'DELETE',
-    headers: createAuthHeaders(token),
-  });
+  const response = await send(
+    `${API_BASE}${endpoint}`,
+    { method: 'DELETE', headers: createAuthHeaders(token) },
+    token
+  );
 
   if (!response.ok) {
     const msg = await parseErrorResponse(response);

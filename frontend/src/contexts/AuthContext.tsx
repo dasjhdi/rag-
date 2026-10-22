@@ -3,7 +3,7 @@
  * Provides authentication state and methods throughout the app
  */
 
-import { createContext, useContext, useMemo, useState, useCallback } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { loginUser, registerUser, updateProfile as updateUserProfile } from '../services/api';
 import { STORAGE_KEYS } from '../constants';
@@ -27,6 +27,9 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 function persistAuth(data: AuthResponse): void {
   localStorage.setItem(STORAGE_KEYS.TOKEN, data.access_token);
   localStorage.setItem(STORAGE_KEYS.USERNAME, data.username);
+  if (data.refresh_token) {
+    localStorage.setItem(STORAGE_KEYS.REFRESH, data.refresh_token);
+  }
 }
 
 /**
@@ -34,6 +37,7 @@ function persistAuth(data: AuthResponse): void {
  */
 function clearAuth(): void {
   localStorage.removeItem(STORAGE_KEYS.TOKEN);
+  localStorage.removeItem(STORAGE_KEYS.REFRESH);
   localStorage.removeItem(STORAGE_KEYS.USERNAME);
 }
 
@@ -44,6 +48,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [username, setUsername] = useState<string | null>(() => 
     localStorage.getItem(STORAGE_KEYS.USERNAME)
   );
+
+  // 请求层静默续期成功后同步内存中的 token；彻底失效时回到未登录态。
+  useEffect(() => {
+    const onRefreshed = (event: Event) => {
+      const detail = (event as CustomEvent<string>).detail;
+      if (detail) setToken(detail);
+    };
+    const onUnauthorized = () => {
+      setToken(null);
+      setUsername(null);
+    };
+    window.addEventListener('auth:token-refreshed', onRefreshed);
+    window.addEventListener('auth-unauthorized', onUnauthorized);
+    return () => {
+      window.removeEventListener('auth:token-refreshed', onRefreshed);
+      window.removeEventListener('auth-unauthorized', onUnauthorized);
+    };
+  }, []);
 
   const handleAuthSuccess = useCallback((data: AuthResponse) => {
     setToken(data.access_token);

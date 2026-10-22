@@ -122,6 +122,7 @@ app.add_middleware(
 EXEMPT_PATHS = {
     f"{settings.API_V1_STR}/auth/login",
     f"{settings.API_V1_STR}/auth/register",
+    f"{settings.API_V1_STR}/auth/refresh",
 }
 
 

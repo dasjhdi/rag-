@@ -11,6 +11,10 @@ export interface AuthResponse {
   access_token: string;
   token_type: string;
   username: string;
+  /** 长有效期令牌，仅用于 /auth/refresh */
+  refresh_token?: string;
+  /** 访问令牌有效期（秒） */
+  expires_in?: number;
 }
 
 export interface UserProfile {

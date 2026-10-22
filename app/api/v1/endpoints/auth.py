@@ -30,6 +30,24 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     username: str
+    # 长有效期令牌，仅用于 POST /auth/refresh 换新的访问令牌
+    refresh_token: Optional[str] = None
+    # 访问令牌剩余有效期（秒），前端据此提前续期
+    expires_in: Optional[int] = None
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str = Field(..., min_length=8)
+
+
+def _issue_tokens(user) -> TokenResponse:
+    """统一签发访问令牌与刷新令牌。"""
+    return TokenResponse(
+        access_token=auth_service.create_access_token(user),
+        username=user.username,
+        refresh_token=auth_service.create_refresh_token(user),
+        expires_in=auth_service.expire_minutes * 60,
+    )
 
 
 @router.post("/auth/register", response_model=TokenResponse)
@@ -48,13 +66,12 @@ async def register(request: RegisterRequest, http_request: Request):
         logger.error("Register error: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail="Registration failed")
 
-    token = auth_service.create_access_token(user)
     audit_logger.login_success(
         username=user.username,
         user_id=str(user.id),
         request=http_request,
     )
-    return TokenResponse(access_token=token, username=user.username)
+    return _issue_tokens(user)
 
 
 @router.post("/auth/login", response_model=TokenResponse)
@@ -107,10 +124,33 @@ async def login(request: LoginRequest, http_request: Request):
     # Record activity for the admin console (best effort, never blocks login)
     await auth_service.touch_last_login(user.username)
 
-    token = auth_service.create_access_token(user)
     audit_logger.login_success(
         username=user.username,
         user_id=str(user.id),
         request=http_request,
     )
-    return TokenResponse(access_token=token, username=user.username)
+    return _issue_tokens(user)
+
+
+@router.post("/auth/refresh", response_model=TokenResponse)
+async def refresh(request: RefreshRequest):
+    """用刷新令牌换取新的访问令牌。
+
+    只接受 ``typ=refresh`` 的令牌；访问令牌不能在此使用（反之亦然，
+    ``decode_token`` 也会拒绝刷新令牌冒充访问令牌）。
+    """
+    identity = auth_service.decode_refresh_token(request.refresh_token)
+    if not identity or not identity.get("username"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="刷新令牌无效或已过期，请重新登录",
+        )
+
+    user = await auth_service.get_user_by_username(identity["username"])
+    if not user or not getattr(user, "is_active", True):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="账号不存在或已被禁用",
+        )
+
+    return _issue_tokens(user)

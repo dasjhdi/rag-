@@ -29,6 +29,7 @@ class AuthService:
         self.secret_key = secret_key or settings.JWT_SECRET_KEY
         self.algorithm = settings.JWT_ALGORITHM
         self.expire_minutes = settings.ACCESS_TOKEN_EXPIRE_MINUTES
+        self.refresh_days = settings.REFRESH_TOKEN_EXPIRE_DAYS
         self.max_failed_attempts = settings.LOGIN_MAX_FAILED_ATTEMPTS
         self.lockout_minutes = settings.LOGIN_LOCKOUT_MINUTES
         self._redis: Optional[Redis] = None
@@ -169,15 +170,48 @@ class AuthService:
     # ------------------------------------------------------------------
     def create_access_token(self, user: UserModel) -> str:
         expire = datetime.now() + timedelta(minutes=self.expire_minutes)
-        payload = {"sub": user.username, "uid": str(user.id), "exp": expire}
+        payload = {
+            "sub": user.username,
+            "uid": str(user.id),
+            "exp": expire,
+            "typ": "access",
+        }
+        return jwt.encode(payload, self.secret_key, algorithm=self.algorithm)
+
+    def create_refresh_token(self, user: UserModel) -> str:
+        """Long-lived token used only by POST /auth/refresh."""
+        expire = datetime.now() + timedelta(days=self.refresh_days)
+        payload = {
+            "sub": user.username,
+            "uid": str(user.id),
+            "exp": expire,
+            "typ": "refresh",
+        }
         return jwt.encode(payload, self.secret_key, algorithm=self.algorithm)
 
     def decode_token(self, token: str) -> Optional[dict]:
+        """Decode an ACCESS token. Refresh tokens are rejected here on purpose."""
         try:
             payload = jwt.decode(token, self.secret_key, algorithms=[self.algorithm])
+            # 旧版本令牌没有 typ 字段，按访问令牌处理以保持向后兼容
+            if payload.get("typ", "access") != "access":
+                logger.warning("Rejected non-access token at access endpoint")
+                return None
             return {"username": payload.get("sub"), "user_id": payload.get("uid")}
         except Exception as exc:  # broad catch to avoid import of ExpiredSignatureError etc
             logger.warning("Failed to decode token: %s", exc)
+            return None
+
+    def decode_refresh_token(self, token: str) -> Optional[dict]:
+        """Decode a REFRESH token. Access tokens are rejected here on purpose."""
+        try:
+            payload = jwt.decode(token, self.secret_key, algorithms=[self.algorithm])
+            if payload.get("typ") != "refresh":
+                logger.warning("Rejected non-refresh token at /auth/refresh")
+                return None
+            return {"username": payload.get("sub"), "user_id": payload.get("uid")}
+        except Exception as exc:
+            logger.warning("Failed to decode refresh token: %s", exc)
             return None
 
     # ------------------------------------------------------------------
