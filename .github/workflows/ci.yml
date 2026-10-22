@@ -35,10 +35,14 @@ jobs:
 
       - name: Run pytest
         env:
-          # CI 不接真实服务，只提供最小可运行的配置
+          # CI 不接真实服务，只提供最小可运行的配置。
+          # 注意：LLM 客户端会在「导入期」构造，缺 Key 会导致 9 个测试模块
+          # 收集失败（pytest exit 2），因此这里必须给占位值——不会被真实调用。
           JWT_SECRET_KEY: ci-only-secret-do-not-use-in-production
           RATE_LIMIT_ENABLED: "false"
           HF_HUB_OFFLINE: "0"
+          LLM_API_KEY: sk-ci-placeholder-not-a-real-key
+          OPENAI_API_KEY: sk-ci-placeholder-not-a-real-key
         run: pytest -q
 
   frontend:
