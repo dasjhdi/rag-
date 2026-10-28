@@ -35,26 +35,32 @@ class UnifiedSource:
         type: Source type - "rag" for knowledge base, "web" for web search
         info: Display text describing the source
         url: Optional URL for web sources (clickable link)
+        index: 知识库来源的引用编号，与回答里的 [n] 对应
     """
 
     type: str  # "rag" | "web"
     info: str
     url: Optional[str] = None
+    index: Optional[int] = None
 
     def to_dict(self) -> Dict[str, Any]:
         result = {"type": self.type, "info": self.info}
         if self.url:
             result["url"] = self.url
+        if self.index is not None:
+            result["index"] = self.index
         return result
 
     @classmethod
     def from_rag_source(cls, source_dict: Dict[str, Any]) -> "UnifiedSource":
         """Convert RAG service source to unified format."""
         info = source_dict.get("info") or source_dict.get("title") or "CookHero 知识库"
+        raw_index = source_dict.get("index")
         return cls(
             type="rag",
             info=info,
             url=source_dict.get("url"),
+            index=int(raw_index) if isinstance(raw_index, int) else None,
         )
 
     @classmethod

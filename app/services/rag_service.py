@@ -8,7 +8,7 @@ import asyncio
 import logging
 import uuid
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from langchain_core.documents import Document
 from langchain_text_splitters import MarkdownHeaderTextSplitter
@@ -21,6 +21,10 @@ from app.config import (
 from app.database.document_repository import document_repository
 from app.rag.embeddings.embedding_factory import get_embedding_model
 from app.rag.vector_stores.vector_store_factory import get_vector_store
+from app.rag.pipeline.context_formatter import (
+    format_numbered_context,
+    source_title,
+)
 from app.rag.pipeline.document_processor import document_processor
 from app.rag.pipeline.query_planner import QueryPlanner
 from app.rag.pipeline.retrieval import RetrievalOptimizationModule, merge_documents
@@ -229,12 +233,9 @@ class RAGService:
         # Post-process: fetch parent documents from database
         processed_docs = await document_processor.post_process_retrieval(reranked_docs)
 
-        # Build context string
-        context_parts = [doc.page_content for doc in processed_docs]
-        context = "\n\n".join(context_parts) if context_parts else ""
-
-        # Extract sources for frontend display
+        # Extract sources first so context numbering matches the cards shown in UI
         sources = self._extract_sources(processed_docs)
+        context = format_numbered_context(processed_docs, sources)
         self._log_retrieval_summary("processed", processed_docs)
 
         return RetrievalResult(
@@ -596,18 +597,15 @@ class RAGService:
 
         for doc in documents:
             metadata = doc.metadata or {}
-            # Build info from title or category
-            title = (
-                metadata.get("dish_name")
-                or metadata.get("title")
-                or metadata.get("source_title")
-            )
-            info = title or metadata.get("category") or "CookHero 知识库"
+            # 标题规则与 context_formatter 共用，保证编号和卡片一致
+            info = source_title(doc)
 
             # Build unified source dict
-            source_info: Dict[str, str] = {
+            source_info: Dict[str, Any] = {
                 "type": "rag",  # Always "rag" for knowledge base sources
                 "info": info,
+                # 1-based 引用编号：回答里的 [n] 指向这张卡片
+                "index": len(sources) + 1,
             }
 
             # Add optional URL if available

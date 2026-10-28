@@ -39,6 +39,8 @@ export interface Source {
   type: 'rag' | 'web' | string;
   info: string;
   url?: string;
+  /** 知识库来源的引用编号，与回答中的 [n] 对应 */
+  index?: number;
 }
 
 export interface IntentInfo {

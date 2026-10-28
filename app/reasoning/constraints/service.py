@@ -60,15 +60,16 @@ def rebuild_retrieval_result(
     if not documents:
         documents = list(getattr(retrieval_result, "documents", []) or [])
 
-    context = "\n\n".join(
-        str(getattr(document, "page_content", "") or "")
-        for document in documents
-    )
     try:
         sources = list(sources_builder(documents) or [])
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to rebuild sources: %s", exc)
         sources = list(getattr(retrieval_result, "sources", []) or [])
+
+    from app.rag.pipeline.context_formatter import format_numbered_context
+
+    # 过滤后必须按同一套编号重建，否则回答里的 [n] 会指向被移除的资料
+    context = format_numbered_context(documents, sources)
 
     return type(retrieval_result)(
         original_query=getattr(retrieval_result, "original_query", ""),

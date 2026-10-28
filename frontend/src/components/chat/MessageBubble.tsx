@@ -54,7 +54,15 @@ function getSourceStyle(type: string): {
 /**
  * Render a single source item with type-based styling
  */
-function SourceItem({ source, index }: { source: Source; index: number }) {
+function SourceItem({
+  source,
+  number,
+  messageId,
+}: {
+  source: Source;
+  number: number;
+  messageId: string;
+}) {
   const style = getSourceStyle(source.type);
   const isWeb = source.type === 'web';
 
@@ -69,9 +77,12 @@ function SourceItem({ source, index }: { source: Source; index: number }) {
 
   return (
     <li
-      key={index}
-      className="text-xs text-gray-600 dark:text-gray-400 flex items-center gap-2"
+      id={`msg-${messageId}-source-${number}`}
+      className="text-xs text-gray-600 dark:text-gray-400 flex items-center gap-2 scroll-mt-24 rounded-md px-1 py-0.5 transition-shadow"
     >
+      <span className="shrink-0 font-mono text-[10px] text-gray-400 dark:text-gray-500">
+        [{number}]
+      </span>
       <span
         className={`w-1.5 h-1.5 rounded-full ${style.dotColor} shrink-0`}
         aria-hidden="true"
@@ -199,7 +210,7 @@ export function MessageBubble({ message, hasError = false }: MessageBubbleProps)
                 ))}
               </div>
             )}
-            <MarkdownRenderer content={message.content.trim()} />
+            <MarkdownRenderer content={message.content.trim()} messageId={message.id} />
           </div>
         )}
 
@@ -220,7 +231,12 @@ export function MessageBubble({ message, hasError = false }: MessageBubbleProps)
                         </p>
                         <ul className="space-y-1">
                           {ragSources.map((source, idx) => (
-                            <SourceItem key={`rag-${idx}`} source={source} index={idx} />
+                            <SourceItem
+                              key={`rag-${idx}`}
+                              source={source}
+                              number={source.index ?? idx + 1}
+                              messageId={message.id}
+                            />
                           ))}
                         </ul>
                       </div>
@@ -232,7 +248,12 @@ export function MessageBubble({ message, hasError = false }: MessageBubbleProps)
                         </p>
                         <ul className="space-y-1">
                           {webSources.map((source, idx) => (
-                            <SourceItem key={`web-${idx}`} source={source} index={idx} />
+                            <SourceItem
+                              key={`web-${idx}`}
+                              source={source}
+                              number={source.index ?? idx + 1}
+                              messageId={message.id}
+                            />
                           ))}
                         </ul>
                       </div>

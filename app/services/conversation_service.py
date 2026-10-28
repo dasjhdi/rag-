@@ -183,6 +183,16 @@ class ConversationService:
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning("Constraint analysis failed: %s", exc)
 
+        # Phase 2.6: Clarification — 低置信度或约束冲突时先问清楚，不硬答
+        clarify_question = self._build_clarification(intent_result, ctx)
+        if clarify_question:
+            yield self._emit_thinking(ctx, "❓ 信息不足或有冲突，先向用户确认")
+            async for event in self._handle_clarification(
+                ctx, clarify_question, intent_result
+            ):
+                yield event
+            return
+
         logger.info(
             "chat route need_rag=%s intent=%s reason=%s history_len=%d images=%d",
             intent_result.need_rag,
@@ -229,9 +239,21 @@ class ConversationService:
         ctx.answer_start_time = time.time()
 
         full_response = ""
-        async for chunk in self._generate_response(ctx):
-            full_response += chunk
-            yield f"data: {json.dumps({'type': 'text', 'content': chunk})}\n\n"
+        try:
+            async for chunk in self._generate_response(ctx):
+                full_response += chunk
+                yield f"data: {json.dumps({'type': 'text', 'content': chunk})}\n\n"
+        except Exception as exc:
+            # 模型断流/超时：给用户一个明确信号，并把已生成的部分保存下来
+            logger.error("Response generation failed: %s", exc, exc_info=True)
+            notice = (
+                "\n\n> ⚠️ 回答生成中断（模型服务暂时不可用），可以重试一次。"
+                if full_response
+                else "⚠️ 回答生成失败，模型服务暂时不可用，请稍后重试。"
+            )
+            full_response += notice
+            yield f"data: {json.dumps({'type': 'text', 'content': notice})}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'content': 'generation_failed'})}\n\n"
 
         # End answer phase
         ctx.answer_end_time = time.time()
@@ -864,6 +886,59 @@ class ConversationService:
         ctx.thinking_steps.append(step)
         return f"data: {json.dumps({'type': 'thinking', 'content': step})}\n\n"
 
+    def _build_clarification(
+        self,
+        intent_result: IntentDetectionResult,
+        ctx: ChatContext,
+    ) -> Optional[str]:
+        """判断是否需要先向用户澄清。
+
+        两类触发条件：
+        - 饮食约束自相冲突（如纯素却要放鸡蛋），必须问清楚；
+        - 意图置信度低且没有抽出明确菜名/食材，先确认需求再检索。
+        闲聊与信息充分的问题一律不打断。
+        """
+        decision = getattr(ctx, "constraint_decision", None)
+        if decision is not None and getattr(decision, "needs_clarification", False):
+            question = (getattr(decision, "clarification_question", "") or "").strip()
+            if question:
+                return question
+
+        if not getattr(intent_result, "needs_clarification", False):
+            return None
+        if not getattr(intent_result, "need_rag", False):
+            # 闲聊类不做澄清，避免「你好」被追问需求
+            return None
+
+        slots = getattr(intent_result, "slots", None)
+        if slots and (
+            getattr(slots, "dish_names", None) or getattr(slots, "ingredients", None)
+        ):
+            # 已经说出了菜名或食材，说明信息足够，直接回答
+            return None
+
+        return (
+            "我想先确认一下你的需求：是想找某道具体菜谱、问一个烹饪技巧，"
+            "还是让我按你现有的食材推荐几道菜？"
+        )
+
+    async def _handle_clarification(
+        self,
+        ctx: ChatContext,
+        question: str,
+        intent_result: IntentDetectionResult,
+    ) -> AsyncGenerator[str, None]:
+        """直接返回澄清问题并落库，不进入检索与生成。"""
+        ctx.thinking_end_time = time.time()
+        ctx.answer_start_time = time.time()
+
+        yield f"data: {json.dumps({'type': 'sources', 'data': []})}\n\n"
+        yield f"data: {json.dumps({'type': 'text', 'content': question})}\n\n"
+
+        ctx.answer_end_time = time.time()
+        await self._save_response(ctx, question, intent_result)
+        yield f"data: {json.dumps({'type': 'done', 'conversation_id': ctx.conv_id})}\n\n"
+
     def _apply_constraint_filter(
         self,
         ctx: ChatContext,
@@ -939,11 +1014,15 @@ class ConversationService:
                 f"{constraint_context.strip()}\n"
             )
 
-        # Add RAG context (local knowledge)
+        # Add RAG context (local knowledge) with citation rules
         if rag_context.strip():
             parts.append(
-                "【本地知识库工具分析结果】\n"
-                "下面是 CookHero 知识库中与当前问题最相关的资料，请参考回答：\n"
+                "【本地知识库资料（可引用）】\n"
+                "每条资料以 [编号] 开头，代表一条可引用的来源。引用规则：\n"
+                "1. 引用某条资料的具体内容时，在句末标注对应编号，如 [1]；\n"
+                "2. 只标注真正用到的编号，不要把所有来源罗列一遍；\n"
+                "3. 编号必须来自资料开头，不要自行编造；\n"
+                "4. 资料未覆盖的推断不要加编号，并说明属于通用经验。\n"
                 f"{rag_context.strip()}\n"
             )
 
