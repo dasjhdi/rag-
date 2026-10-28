@@ -344,9 +344,9 @@ class ConversationService:
             image_sources = []
             for i, img in enumerate(ctx.images):
                 # Upload to imgbb for persistent URL
-                from app.utils.image_storage import upload_to_imgbb
+                from app.utils.image_storage import upload_image
                 try:
-                    upload_result = await upload_to_imgbb(
+                    upload_result = await upload_image(
                         img["data"],
                         img.get("mime_type", "image/jpeg"),
                     )

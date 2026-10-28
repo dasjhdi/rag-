@@ -4,7 +4,7 @@ User profile endpoints: get current user and update profile.
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 
 from app.services.auth_service import auth_service
@@ -30,16 +30,19 @@ class UpdateProfileRequest(BaseModel):
     user_instruction: Optional[str] = None
 
 
-def _get_identity_from_auth(authorization: Optional[str] = Header(None)) -> dict:
-    if not authorization:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing Authorization header")
-    if not authorization.lower().startswith("bearer "):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Authorization header")
-    token = authorization.split(" ", 1)[1]
-    identity = auth_service.decode_token(token)
-    if not identity or not identity.get("username"):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
-    return identity
+def _get_identity_from_auth(request: Request) -> dict:
+    """身份由鉴权网关写入 request.state；此处只做存在性校验。
+
+    网关已同时支持 Bearer 头与 HttpOnly Cookie，端点不再自行解析请求头，
+    否则 Cookie 会话在这些端点上会失效。
+    """
+    username = getattr(request.state, "username", None)
+    user_id = getattr(request.state, "user_id", None)
+    if not username or not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="需要登录"
+        )
+    return {"username": username, "user_id": user_id}
 
 
 @router.get("/user/profile", response_model=UserProfile)

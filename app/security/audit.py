@@ -27,6 +27,11 @@ class AuditEventType(Enum):
 
     # Account security
     ACCOUNT_LOCKED = "account.locked"
+    # 双因子
+    TOTP_ENABLED = "auth.totp.enabled"
+    TOTP_DISABLED = "auth.totp.disabled"
+    TOTP_FAILED = "auth.totp.failed"
+    TOTP_RECOVERY_USED = "auth.totp.recovery_used"
     ACCOUNT_UNLOCKED = "account.unlocked"
     PASSWORD_CHANGED = "account.password.changed"
     PROFILE_UPDATED = "account.profile.updated"

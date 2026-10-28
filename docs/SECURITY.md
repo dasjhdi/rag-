@@ -660,6 +660,56 @@ Headers: Retry-After: 60
 [Audit Log] Record rate_limit.exceeded event
 ```
 
+## 12. Admin Console Hardening (2026-10)
+
+后台是权限最集中的一面，单独做了四层加固，配置项都在 `.env` 与 `config.yml`。
+
+### 12.1 双因子（TOTP）
+
+- 标准 RFC 6238（SHA1 / 6 位 / 30 秒），实现只用标准库，验证器 App 手动录入密钥即可。
+- 共享密钥用 AES-GCM 加密后落库（`users.totp_secret`），密钥由 `JWT_SECRET_KEY` 派生；
+  **更换 JWT 密钥会让所有已绑定的验证器失效**，需要重新绑定。
+- 恢复码 10 个，只存 SHA-256 哈希，用完即作废；绑定成功时明文只返回一次。
+- 动态码带时间片防重放：同一时间片内的码不能用第二次（`users.totp_last_counter`）。
+- 登录两段式：`POST /auth/login` 密码正确但已绑定双因子时返回 `requires_totp` + 5 分钟挑战，
+  由 `POST /auth/login/totp` 用动态码或恢复码换正式令牌；挑战不能当访问令牌用。
+- 策略开关：`TOTP_REQUIRED_FOR_SUPER_ADMIN=true` 时，未绑定的超管调用任何 `/api/v1/admin/*`
+  接口都会得到 `403 {"code": "totp_setup_required"}`，前端只显示绑定页。
+- 运维兜底：`python -m scripts.reset_totp --username <账号>` 清除绑定并吊销该账号全部令牌。
+
+### 12.2 后台写操作限流
+
+`app/security/admin_rate_limit.py` 按**登录用户名**分两个滑动窗口：
+
+| 桶 | 默认 | 覆盖 |
+| --- | --- | --- |
+| 读 | 120 次/分钟 | 所有 `/admin` 请求 |
+| 写 | `RATE_LIMIT_ADMIN_WRITE_PER_MINUTE`（默认 20） | POST/PUT/PATCH/DELETE |
+
+计数在进程内，单实例部署下有效；多 worker 时各自计数，属于粗保护。超限返回 429 + `Retry-After`。
+
+### 12.3 审计：成功与失败都留痕
+
+`admin_audit_logs` 新增 `success` / `error` / `before` / `after` / `request_id` / `user_agent`：
+
+- 成功路径由端点在**业务事务内**写入，和业务变更同生共死；
+- 失败路径由中间件在响应码 >= 400 时用**独立事务**写入，避免随业务回滚丢失；
+- `before`/`after` 是结构化 JSON，前端直接做 diff；`request_id` 复用上游 `X-Request-ID`，
+  没有则生成，便于与应用日志对齐。
+
+### 12.4 成本 / 错误率告警
+
+`config.yml` 的 `alerts` 段控制，后台「告警」页可查看阈值、上次巡检与触发记录：
+
+| 告警 | 默认阈值 | 数据来源 |
+| --- | --- | --- |
+| 成本异常 | 今日 ≥ 前 7 日均值的 1.5 倍且 ≥ ¥5 | `llm_usage_logs` + `pricing` |
+| LLM 错误率 | ≥ 5%，样本 ≥ 50 | `llm_usage_logs.status` |
+| 评测失败率 | ≥ 20%，样本 ≥ 10 | `rag_evaluations` |
+
+同类告警在 `cooldown_minutes`（默认 120）内只推送一次；通知渠道为 webhook
+（企业微信机器人地址可直接用），未配置时仍会落库供后台查看。
+
 **This document will be continuously updated with security feature iterations.**
 
 If you discover security vulnerabilities, please report them via GitHub Issues or email the project maintainers.

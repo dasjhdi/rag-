@@ -21,10 +21,13 @@ from fastapi import HTTPException
 from app.api.v1.endpoints.admin import (
     ASSIGNABLE_ROLES,
     CAPABILITIES,
+    ROLE_RANK,
+    _can_manage_account,
     _serialize_user,
     get_current_user,
     require_admin,
     require_capability,
+    require_password_reset,
     router,
 )
 from app.database.models import ADMIN_ROLES, UserModel
@@ -80,34 +83,144 @@ async def test_require_admin_rejects_plain_user():
     assert exc.value.status_code == 403
 
 
-async def test_require_admin_accepts_every_admin_role():
-    for role in ADMIN_ROLES:
-        user = await require_admin(_user(role))
-        assert user.role == role
+async def test_require_admin_accepts_admin_role():
+    user = await require_admin(_user("admin"))
+    assert user.role == "admin"
+
+
+async def test_super_admin_without_totp_is_blocked():
+    """策略：超管未绑定双因子时，后台 API 返回结构化 403。"""
+    with pytest.raises(HTTPException) as exc:
+        await require_admin(_user("super_admin"))
+    assert exc.value.status_code == 403
+    assert exc.value.detail["code"] == "totp_setup_required"
+
+
+async def test_super_admin_with_totp_is_allowed():
+    user = _user("super_admin")
+    user.totp_enabled = True
+    assert (await require_admin(user)).role == "super_admin"
 
 
 def test_capability_matrix_is_consistent():
-    # 每个后台角色都必须能读
+    # 只有两种后台角色
+    assert ADMIN_ROLES == {"admin", "super_admin"}
     for role in ADMIN_ROLES:
         assert "read" in CAPABILITIES[role], f"{role} 缺少 read 权限"
     # 普通用户不在矩阵里
     assert "user" not in CAPABILITIES
-    # 只有超管能动角色和看审计
+    # 管理员：读数据、会话排障、管理普通用户
+    assert CAPABILITIES["admin"] == {
+        "read",
+        "sessions",
+        "user_status",
+        "user_password:self_tier",
+    }
+    # 管理员不具备：改角色、建号、删号、审计、重置任意密码
+    for cap in (
+        "user_role",
+        "user_create",
+        "user_delete",
+        "audit",
+        "user_password:all",
+    ):
+        assert cap not in CAPABILITIES["admin"]
+    # 超管全权
+    for cap in (
+        "read",
+        "sessions",
+        "user_status",
+        "user_password:all",
+        "user_role",
+        "user_create",
+        "user_delete",
+        "audit",
+        "alerts",
+    ):
+        assert cap in CAPABILITIES["super_admin"]
+    # 旧角色（客服 / 只读 / 运营）已从矩阵移除
+    for legacy in ("viewer", "support", "ops"):
+        assert legacy not in CAPABILITIES
+    for role in ADMIN_ROLES:
+        assert "user_password" not in CAPABILITIES[role]
+
+
+def test_role_rank_order():
+    assert ROLE_RANK == {"user": 0, "admin": 1, "super_admin": 2}
+
+
+def test_admin_cannot_manage_same_or_higher_role():
+    admin = _user("admin")
+    for target_role in ("admin", "super_admin"):
+        assert _can_manage_account(admin, _user(target_role)) is False
+    assert _can_manage_account(admin, _user("user")) is True
+
+
+def test_super_admin_can_manage_every_role():
+    su = _user("super_admin")
+    for target_role in ("user", "admin", "super_admin"):
+        assert _can_manage_account(su, _user(target_role)) is True
+
+
+def test_user_delete_capability_is_super_admin_only():
+    assert "user_delete" in CAPABILITIES["super_admin"]
     for role in ADMIN_ROLES - {"super_admin"}:
-        assert "user_role" not in CAPABILITIES[role]
-        assert "audit" not in CAPABILITIES[role]
-    # ops 管账号但不管角色
-    assert "user_status" in CAPABILITIES["ops"]
-    assert "user_role" not in CAPABILITIES["ops"]
-    # support 只能看会话，不能改账号
-    assert "sessions" in CAPABILITIES["support"]
-    assert "user_status" not in CAPABILITIES["support"]
+        assert "user_delete" not in CAPABILITIES[role]
 
 
-async def test_viewer_cannot_manage_users():
+def test_user_create_capability_is_super_admin_only():
+    assert "user_create" in CAPABILITIES["super_admin"]
+    for role in ADMIN_ROLES - {"super_admin"}:
+        assert "user_create" not in CAPABILITIES[role]
+
+
+def test_create_user_route_registered():
+    routes = {
+        (route.path, method)
+        for route in router.routes
+        for method in getattr(route, "methods", set())
+    }
+    assert ("/admin/users", "POST") in routes
+
+
+def test_describe_counts_skips_zero_values():
+    from app.api.v1.endpoints.admin import _describe_counts
+
+    text = _describe_counts({"conversations": 2, "messages": 10, "pantry_items": 0})
+    assert "会话 2" in text
+    assert "消息 10" in text
+    assert "库存" not in text
+
+
+def test_delete_user_route_registered():
+    routes = {
+        (route.path, method)
+        for route in router.routes
+        for method in getattr(route, "methods", set())
+    }
+    assert ("/admin/users/{user_id}", "DELETE") in routes
+
+
+def test_password_reset_capability_dependency():
+    for role in ("admin", "super_admin"):
+        assert require_password_reset(_user(role)).role == role
+    with pytest.raises(HTTPException) as exc:
+        require_password_reset(_user("user"))
+    assert exc.value.status_code == 403
+
+
+async def test_legacy_roles_cannot_enter_admin():
+    """客服 / 只读 / 运营等旧角色一律不得进入管理后台。"""
+    for legacy in ("viewer", "support", "ops"):
+        with pytest.raises(HTTPException) as exc:
+            await require_admin(_user(legacy))
+        assert exc.value.status_code == 403
+
+
+async def test_user_cannot_manage_users():
     dep = require_capability("user_status")
     with pytest.raises(HTTPException) as exc:
-        await dep(_user("viewer"))
+        await dep(_user("user"))
     assert exc.value.status_code == 403
 
 
@@ -129,12 +242,14 @@ def test_assignable_roles_cover_user_and_admins():
 def test_user_model_is_admin_property():
     user = _user("user")
     assert user.is_admin is False
-    user.role = "ops"
+    user.role = "admin"
+    assert user.is_admin is True
+    user.role = "super_admin"
     assert user.is_admin is True
 
 
 def test_serialize_user_merges_counts():
-    user = _user("support")
+    user = _user("admin")
     user.created_at = None
     user.last_login_at = None
     user.occupation = "student"
@@ -151,7 +266,7 @@ def test_serialize_user_merges_counts():
     }
     payload = _serialize_user(user, counts)
 
-    assert payload["role"] == "support"
+    assert payload["role"] == "admin"
     assert payload["is_active"] is True
     assert payload["counts"]["conversations"] == 3
     assert payload["counts"]["tokens"] == 12345

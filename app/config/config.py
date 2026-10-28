@@ -11,6 +11,8 @@ Design:
 
 import os
 
+from typing import Optional
+
 from pydantic import BaseModel
 
 from app.config.database_config import DatabaseConfig
@@ -21,6 +23,7 @@ from app.config.vision_config import VisionConfig, ImageGenerationConfig, ImageS
 from app.config.evaluation_config import EvaluationConfig
 from app.config.mcp_config import MCPConfig
 from app.config.constraint_config import ConstraintReasoningConfig
+from app.config.alerts_config import AlertsConfig
 from app.config.config_loader import (
     load_database_config,
     load_llm_config,
@@ -33,6 +36,7 @@ from app.config.config_loader import (
     load_constraint_config,
     load_image_generation_config,
     load_image_storage_config,
+    load_alerts_config,
 )
 
 
@@ -65,6 +69,20 @@ class Settings(BaseModel):
     # Refresh token expiration (7 days)
     REFRESH_TOKEN_EXPIRE_DAYS: int = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
 
+    # --- 会话 Cookie（同域部署，浏览器持有 HttpOnly 会话）---
+    # 生产必须为 true（仅 HTTPS 发送）；本地 http 调试设为 false
+    COOKIE_SECURE: bool = os.getenv("COOKIE_SECURE", "false").lower() == "true"
+    # 留空表示仅当前主机生效；跨子域时填 .example.com
+    COOKIE_DOMAIN: Optional[str] = os.getenv("COOKIE_DOMAIN") or None
+    # 允许的来源（CSRF Origin 校验与 CORS 共用），逗号分隔
+    CORS_ORIGINS: list[str] = [
+        origin.strip()
+        for origin in os.getenv(
+            "CORS_ORIGINS", "http://localhost:5173,http://localhost:8080"
+        ).split(",")
+        if origin.strip()
+    ]
+
     # ==========================================================================
     # Rate Limiting Configuration (Strict Mode)
     # ==========================================================================
@@ -72,6 +90,10 @@ class Settings(BaseModel):
     RATE_LIMIT_LOGIN_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_LOGIN_PER_MINUTE", "5"))
     RATE_LIMIT_CONVERSATION_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_CONVERSATION_PER_MINUTE", "30"))
     RATE_LIMIT_GLOBAL_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_GLOBAL_PER_MINUTE", "100"))
+    # 后台写操作独立限流：按 admin 账号计（不是 IP），与全局桶分开
+    RATE_LIMIT_ADMIN_WRITE_PER_MINUTE: int = int(
+        os.getenv("RATE_LIMIT_ADMIN_WRITE_PER_MINUTE", "20")
+    )
 
     # ==========================================================================
     # Security Configuration
@@ -84,6 +106,15 @@ class Settings(BaseModel):
     MAX_IMAGE_SIZE_MB: int = int(os.getenv("MAX_IMAGE_SIZE_MB", "5"))
     # Prompt injection protection
     PROMPT_GUARD_ENABLED: bool = os.getenv("PROMPT_GUARD_ENABLED", "true").lower() == "true"
+
+    # --- 双因子（TOTP）---
+    # 关掉后：已绑定的账号仍可用动态码登录，但不再强制超管绑定
+    TOTP_ENABLED: bool = os.getenv("TOTP_ENABLED", "true").lower() == "true"
+    TOTP_ISSUER: str = os.getenv("TOTP_ISSUER", "CookHero")
+    # 超管不绑定 TOTP 就拿不到后台数据（仍可登录，以便进入绑定页）
+    TOTP_REQUIRED_FOR_SUPER_ADMIN: bool = (
+        os.getenv("TOTP_REQUIRED_FOR_SUPER_ADMIN", "true").lower() == "true"
+    )
     
     # ==========================================================================
     # Module Configurations
@@ -121,6 +152,9 @@ class Settings(BaseModel):
 
     # Constraint reasoning configuration loaded from config.yml
     constraint_reasoning: ConstraintReasoningConfig = load_constraint_config()
+
+    # Cost / error-rate alerting (config.yml: alerts)
+    alerts: AlertsConfig = load_alerts_config()
 
     class Config:
         arbitrary_types_allowed = True

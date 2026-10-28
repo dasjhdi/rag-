@@ -3,6 +3,11 @@
 后台是高风险面：泄露的 token 可以对全站数据做批量读取，因此不依赖全局限流
 （``RATE_LIMIT_ENABLED`` 常被关掉），单独按"登录用户名"做滑动窗口。
 
+两级配额：
+* 读：默认 120 次/分钟，覆盖整个 ``/admin`` 前缀；
+* 写（POST/PUT/PATCH/DELETE）：默认 20 次/分钟，独立计数——误连点、脚本失控
+  和批量删除最先体现在这里，所以阈值要比读低一个量级。
+
 实现约束：
 * 进程内计数，适用于单实例部署；多 worker 时各自计数，只能作为粗保护。
 * 超过阈值直接 429，不做排队。
@@ -17,9 +22,15 @@ from typing import Deque, Dict, Optional
 
 from fastapi import HTTPException, Request, status
 
+from app.config import settings
+
 # 默认：每个账号 60 秒内最多 120 次后台请求
 DEFAULT_LIMIT = 120
 DEFAULT_WINDOW_SECONDS = 60.0
+# 写操作默认 20 次/分钟
+DEFAULT_WRITE_LIMIT = 20
+
+_WRITE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
 
 class SlidingWindowLimiter:
@@ -53,14 +64,37 @@ class SlidingWindowLimiter:
 
 
 admin_limiter = SlidingWindowLimiter()
+admin_write_limiter = SlidingWindowLimiter(
+    limit=int(getattr(settings, "RATE_LIMIT_ADMIN_WRITE_PER_MINUTE", DEFAULT_WRITE_LIMIT)),
+    window_seconds=DEFAULT_WINDOW_SECONDS,
+)
 
 
 async def admin_rate_limit(request: Request) -> None:
-    """FastAPI dependency: 429 when the caller exceeds the admin quota."""
+    """FastAPI dependency: 429 when the caller exceeds the admin quota.
+
+    读与写分别计数：写操作先过一个更严格的桶，再计入总桶。
+    """
     username: Optional[str] = getattr(request.state, "username", None)
     if not username:
         username = request.client.host if request.client else "anonymous"
+
+    if request.method in _WRITE_METHODS and not admin_write_limiter.allow(username):
+        request.state.rate_limit_denied = (
+            admin_write_limiter._limit,
+            admin_write_limiter._limit,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="后台写操作过于频繁，请稍后再试",
+            headers={"Retry-After": str(int(DEFAULT_WINDOW_SECONDS))},
+        )
+
     if not admin_limiter.allow(username):
+        request.state.rate_limit_denied = (
+            admin_limiter._limit,
+            admin_limiter._limit,
+        )
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="后台请求过于频繁，请稍后再试",

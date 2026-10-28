@@ -1,0 +1,48 @@
+# CookHero 同域网关
+#
+# 前端静态资源与 API 同源：
+#   /            → frontend/dist（SPA，未知路径回落 index.html）
+#   /api/*       → 后端 FastAPI
+#   /media/*     → 后端图片路由
+#
+# 两个站点：
+#   :8080             本地 HTTP（开发联调，Cookie 不要求 Secure）
+#   https://localhost:8443  本地 HTTPS（用 Caddy 内部 CA 验证 Secure Cookie 链路）
+
+{
+	# 本地不对外申请证书；生产改为真实域名并删除 tls internal
+	admin off
+}
+
+(common) {
+	encode zstd gzip
+
+	handle /api/* {
+		reverse_proxy {$API_UPSTREAM:host.docker.internal:8000}
+	}
+
+	handle /media/* {
+		reverse_proxy {$API_UPSTREAM:host.docker.internal:8000}
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+}
+
+:8080 {
+	import common
+}
+
+https://localhost:8443 {
+	tls internal
+	import common
+}

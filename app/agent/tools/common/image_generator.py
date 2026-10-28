@@ -11,7 +11,7 @@ import logging
 
 from app.agent.tools.base import BaseTool
 from app.agent.types import ToolResult
-from app.utils.image_storage import upload_to_imgbb
+from app.utils.image_storage import upload_image
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +117,7 @@ class ImageGeneratorTool(BaseTool):
                 )
 
             # Upload to imgbb for persistent storage
-            storage_result = await upload_to_imgbb(original_url)
+            storage_result = await upload_image(original_url)
 
             if storage_result:
                 # Use imgbb URL as the final URL

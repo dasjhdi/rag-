@@ -29,6 +29,7 @@ from app.config.vision_config import VisionConfig, ImageGenerationConfig, ImageS
 from app.config.evaluation_config import EvaluationConfig, AlertThresholds
 from app.config.mcp_config import MCPConfig, MCPServerConfig
 from app.config.constraint_config import ConstraintReasoningConfig
+from app.config.alerts_config import AlertsConfig, AlertThresholds as AlertsThresholds
 
 
 # Load .env file into environment variables at module import
@@ -257,6 +258,31 @@ def load_evaluation_config() -> EvaluationConfig:
     )
 
 
+def load_alerts_config() -> AlertsConfig:
+    """Load alerting configuration from YAML + environment."""
+    config_data = _load_config_data()
+    data = dict(config_data.get("alerts", {}) or {})
+
+    thresholds_data = data.pop("thresholds", None) or {}
+    thresholds = AlertsThresholds(**{
+        key: value
+        for key, value in thresholds_data.items()
+        if key in AlertsThresholds.__dataclass_fields__
+    })
+
+    return AlertsConfig(
+        enabled=data.get("enabled", True),
+        interval_seconds=int(data.get("interval_seconds", 300)),
+        cooldown_minutes=int(data.get("cooldown_minutes", 120)),
+        channel=str(data.get("channel", "none")),
+        webhook_url=str(
+            os.getenv("ALERT_WEBHOOK_URL") or data.get("webhook_url", "") or ""
+        ),
+        title_prefix=str(data.get("title_prefix", "[CookHero]")),
+        thresholds=thresholds,
+    )
+
+
 def load_mcp_config() -> MCPConfig:
     """
     Load MCP configuration from YAML + environment variables.
@@ -310,14 +336,28 @@ def load_image_storage_config() -> ImageStorageConfig:
     Load image storage configuration from YAML + environment variables.
 
     Environment variables:
-    - IMGBB_STORAGE_API_KEY: imgbb API key for image storage
+    - IMAGE_STORAGE_PROVIDER: "minio" (default) or "imgbb"
+    - MINIO_ACCESS_KEY / MINIO_SECRET_KEY / MINIO_BUCKET / MINIO_ENDPOINT
+    - IMGBB_STORAGE_API_KEY: only used when provider=imgbb
     """
     config_data = _load_config_data()
     is_data = dict(config_data.get("image_storage", {}) or {})
 
-    # Load API key from environment
-    api_key = os.getenv("IMGBB_STORAGE_API_KEY")
-    if api_key:
-        is_data["api_key"] = api_key
+    provider = os.getenv("IMAGE_STORAGE_PROVIDER")
+    if provider:
+        is_data["provider"] = provider.strip().lower()
+
+    env_map = {
+        "minio_access_key": "MINIO_ACCESS_KEY",
+        "minio_secret_key": "MINIO_SECRET_KEY",
+        "minio_bucket": "MINIO_BUCKET",
+        "minio_endpoint": "MINIO_ENDPOINT",
+        "public_base": "MEDIA_PUBLIC_BASE",
+        "api_key": "IMGBB_STORAGE_API_KEY",
+    }
+    for field, env_name in env_map.items():
+        value = os.getenv(env_name)
+        if value:
+            is_data[field] = value
 
     return ImageStorageConfig.model_validate(is_data)

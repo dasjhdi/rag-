@@ -228,6 +228,28 @@ constraint_reasoning:
   max_candidates: 20
 
 # =============================================================================
+# 6c. Alerting (成本 / 错误率)
+# =============================================================================
+# 后台每 interval_seconds 巡检一次；同类告警在 cooldown_minutes 内只推送一次。
+# channel 为 webhook 时，webhook_url 填企业微信机器人地址即可直接推送文本；
+# 其他地址会收到通用 JSON（source/severity/title/message/timestamp）。
+alerts:
+  enabled: true
+  interval_seconds: 300
+  cooldown_minutes: 120
+  channel: none            # none | webhook
+  webhook_url: ""          # 也可用环境变量 ALERT_WEBHOOK_URL 覆盖
+  title_prefix: "[CookHero]"
+  thresholds:
+    cost_spike_ratio: 1.5  # 今日成本 >= 前 7 日均值的 1.5 倍
+    cost_min_amount: 5.0   # 金额太小不告警，避免噪声
+    error_rate: 0.05       # LLM 调用错误率 5%
+    error_min_samples: 50
+    eval_error_rate: 0.2   # RAGAS 评测失败率 20%
+    eval_min_samples: 10
+
+
+# =============================================================================
 # 7. Web Search Configuration (You.com)
 # =============================================================================
 # Configuration for real-time web search enhancement using You.com API.
@@ -262,6 +284,21 @@ image_generation:
   model: "Kwai-Kolors/Kolors"
   base_url: "https://api.siliconflow.cn/v1"
   # api_key: Loaded from .env (IMAGE_GENERATION_API_KEY)
+
+# -----------------------------------------------------------------------------
+# 8.1 Image storage - 聊天上传图片与生成图片的落点
+# -----------------------------------------------------------------------------
+image_storage:
+  enabled: true
+  # minio = 自托管对象存储（推荐，图片不出内网）；imgbb = 第三方图床（需 IMGBB_STORAGE_API_KEY）
+  provider: "minio"
+  minio_endpoint: "localhost:9001"   # compose 把 MinIO 9000 映射到宿主 9001
+  minio_bucket: "cookhero-media"
+  minio_secure: false
+  thumbnail_max_px: 512
+  # 访问前缀；留空则由后端 /media/uploads/<name> 代理，天然免鉴权且不暴露 MinIO
+  public_base: ""
+  # minio_access_key / minio_secret_key: Loaded from .env (MINIO_ACCESS_KEY / MINIO_SECRET_KEY)
 
 # =============================================================================
 # 9. MCP (Model Context Protocol) Configuration

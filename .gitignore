@@ -46,5 +46,8 @@ blog/
 # WorkBuddy agent metadata & memory (local only)
 .workbuddy/
 
+# 数据库备份（含数据，不入库）
+/backups/
+
 # Build / generation outputs
 /outputs/

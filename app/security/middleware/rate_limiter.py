@@ -58,13 +58,22 @@ class RateLimiter:
         """Set Redis client (called after app startup)."""
         self.redis = redis_client
 
-    async def _get_rate_limit_key(self, request: Request, key_type: str = "ip") -> str:
+    async def _get_rate_limit_key(
+        self, request: Request, key_type: str = "ip", scope: str = "global"
+    ) -> str:
         """
-        Generate rate limit key based on type.
+        Generate rate limit key based on type and endpoint scope.
+
+        The scope is part of the key on purpose: every scope owns its own
+        counter. Sharing one counter across endpoints means ordinary API
+        traffic (list/poll requests fired on page load) silently eats the
+        budget of a stricter scope, and a user who only submits the login
+        form once gets rejected with 429.
 
         Args:
             request: FastAPI request object
             key_type: "ip" for IP-based, "user" for user-based
+            scope: endpoint scope ("login" / "conversation" / "global")
 
         Returns:
             Redis key string
@@ -82,9 +91,9 @@ class RateLimiter:
         if key_type == "user":
             user_id = getattr(request.state, "user_id", None)
             if user_id:
-                return f"rate_limit:user:{user_id}:{window}"
+                return f"rate_limit:user:{user_id}:{scope}:{window}"
 
-        return f"rate_limit:ip:{client_ip}:{window}"
+        return f"rate_limit:ip:{client_ip}:{scope}:{window}"
 
     async def _check_limit(self, key: str, limit: int) -> tuple[bool, int, int]:
         """
@@ -118,14 +127,25 @@ class RateLimiter:
             logger.warning(f"Rate limit check failed: {e}, allowing request")
             return True, 0, limit
 
+    def _get_scope_for_path(self, path: str) -> str:
+        """Classify a request path into an isolated rate-limit scope."""
+        if "/auth/login" in path or "/auth/register" in path:
+            return "login"
+        if "/conversation" in path:
+            return "conversation"
+        return "global"
+
+    def _get_limit_for_scope(self, scope: str) -> int:
+        """Get rate limit for a scope."""
+        if scope == "login":
+            return self.config.login_per_minute
+        if scope == "conversation":
+            return self.config.conversation_per_minute
+        return self.config.global_per_minute
+
     def _get_limit_for_path(self, path: str) -> int:
         """Get rate limit based on endpoint path."""
-        if "/auth/login" in path or "/auth/register" in path:
-            return self.config.login_per_minute
-        elif "/conversation" in path:
-            return self.config.conversation_per_minute
-        else:
-            return self.config.global_per_minute
+        return self._get_limit_for_scope(self._get_scope_for_path(path))
 
     async def check_rate_limit(self, request: Request) -> Optional[JSONResponse]:
         """
@@ -154,11 +174,12 @@ class RateLimiter:
         ):
             return None
 
-        # Get appropriate limit for this endpoint
-        limit = self._get_limit_for_path(path)
+        # Get appropriate limit for this endpoint's scope
+        scope = self._get_scope_for_path(path)
+        limit = self._get_limit_for_scope(scope)
 
         # Check IP-based rate limit
-        ip_key = await self._get_rate_limit_key(request, "ip")
+        ip_key = await self._get_rate_limit_key(request, "ip", scope)
         is_allowed, current, remaining = await self._check_limit(ip_key, limit)
 
         if not is_allowed:
@@ -166,6 +187,8 @@ class RateLimiter:
                 f"Rate limit exceeded: path={path}, key={ip_key}, "
                 f"current={current}, limit={limit}"
             )
+            # Surface the real numbers to the audit middleware below.
+            request.state.rate_limit_denied = (limit, current)
             return JSONResponse(
                 status_code=429,
                 content={

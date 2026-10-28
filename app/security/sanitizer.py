@@ -64,20 +64,20 @@ class SensitiveDataFilter(logging.Filter):
         )
 
     def filter(self, record: logging.LogRecord) -> bool:
-        """Filter and sanitize log record."""
-        # Sanitize the message
-        if isinstance(record.msg, str):
-            record.msg = self._sanitize_string(record.msg)
+        """Filter and sanitize log record.
 
-        # Sanitize args if present
-        if record.args:
-            if isinstance(record.args, dict):
-                record.args = self._sanitize_dict(record.args)
-            elif isinstance(record.args, tuple):
-                record.args = tuple(
-                    self._sanitize_value(arg) for arg in record.args
-                )
+        先把参数渲染进消息再脱敏，否则对「模板里含敏感键」的消息
+        （例如 ``"failed to decode refresh token: %s"``）脱敏会吃掉 ``%s``，
+        而 args 仍在，logging 做 ``msg % args`` 时抛
+        ``TypeError: not all arguments converted``，直接打断调用方。
+        """
+        try:
+            rendered = record.getMessage()
+        except Exception:  # 渲染失败时退化为原始模板，绝不因日志报错
+            rendered = str(record.msg)
 
+        record.msg = self._sanitize_string(rendered)
+        record.args = ()
         return True
 
     def _sanitize_string(self, text: str) -> str:

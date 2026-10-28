@@ -103,8 +103,14 @@ if ($Stop) {
 Write-Host "== 1/3 检查 Docker ==" -ForegroundColor Cyan
 docker info *> $null
 if ($LASTEXITCODE -ne 0) {
-    $exe = "D:\Program Files\Docker\Docker Desktop.exe"
-    if (Test-Path $exe) {
+    # Docker Desktop 常见安装位置（不同版本/自定义安装路径不同，逐个探测）
+    $candidates = @(
+        "D:\Program Files\Docker\Docker Desktop.exe",
+        "C:\Program Files\Docker\Docker\Docker Desktop.exe",
+        (Join-Path $env:LOCALAPPDATA "Docker\Docker Desktop.exe")
+    )
+    $exe = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($exe) {
         Write-Host "  Docker 引擎未运行，正在拉起 Docker Desktop..." -ForegroundColor Yellow
         Start-Process -FilePath $exe
         for ($i = 1; $i -le 24; $i++) {
@@ -140,7 +146,7 @@ Start-Process powershell -ArgumentList @(
 Start-Sleep -Seconds 2
 Start-Process powershell -ArgumentList @(
     "-NoExit", "-Command",
-    "cd '$Root\frontend'; `$host.UI.RawUI.WindowTitle='CookHero 前端 :5173'; npm run dev"
+    "cd '$Root\frontend'; `$host.UI.RawUI.WindowTitle='CookHero 前端 :5173'; npm.cmd run dev"
 )
 
 Write-Host ""

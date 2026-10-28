@@ -142,7 +142,7 @@ class AgentContextBuilder:
         Returns:
             List of processed images [{data, mime_type, url}]
         """
-        from app.utils.image_storage import upload_to_imgbb
+        from app.utils.image_storage import upload_image
 
         processed = []
         for img in images:
@@ -154,7 +154,7 @@ class AgentContextBuilder:
 
             # Upload to imgbb for persistent URL
             try:
-                upload_result = await upload_to_imgbb(
+                upload_result = await upload_image(
                     img["data"],
                     img["mime_type"],
                 )

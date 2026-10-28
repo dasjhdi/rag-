@@ -16,6 +16,7 @@ from sqlalchemy import (
     Enum as SQLEnum,
     ForeignKey,
     Index,
+    Integer,
     JSON,
     String,
     Text,
@@ -31,7 +32,9 @@ class Base(DeclarativeBase):
 
 # Roles that are allowed to access the admin API. Kept in one place so the
 # guard, the bootstrap SQL and the frontend hint never drift apart.
-ADMIN_ROLES: frozenset[str] = frozenset({"viewer", "support", "ops", "super_admin"})
+# 账号角色只有三种：user / admin / super_admin。
+# 只有后两种能进入管理后台（见 admin.py 的 require_admin）。
+ADMIN_ROLES: frozenset[str] = frozenset({"admin", "super_admin"})
 
 
 # ==================== User Model ====================
@@ -54,7 +57,7 @@ class UserModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False
     )
-    # Access control: "user" | "viewer" | "support" | "ops" | "super_admin"
+    # Access control: "user" | "admin" | "super_admin"
     role: Mapped[str] = mapped_column(
         String(20), nullable=False, default="user", server_default="user"
     )
@@ -64,6 +67,25 @@ class UserModel(Base):
     )
     # Updated on every successful login; used for activity analysis.
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # Bumped whenever every issued token must stop working (password change,
+    # admin reset, explicit logout). JWT carries the value it was issued with.
+    token_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+
+    # --- Two-factor authentication (TOTP) ---
+    # secret 由 app.security.secret_box 加密后落库；未绑定时为空
+    totp_secret: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    totp_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    totp_confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # 已消费的时间片，用于拒绝同一动态码的重复使用
+    totp_last_counter: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    # [{"hash": "...", "used_at": null}]，只存哈希
+    totp_recovery_codes: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
 
     __table_args__ = (
         Index("ix_users_username", "username", unique=True),
@@ -383,6 +405,11 @@ class LLMUsageLogModel(Base):
     total_tokens: Mapped[Optional[int]] = mapped_column(nullable=True)
     # Performance metrics
     duration_ms: Mapped[Optional[int]] = mapped_column(nullable=True)
+    # Outcome: 失败也落一行，用于计算错误率（token 通常为空）
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="success", server_default="success", index=True
+    )
+    error_type: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
     # Timestamp
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False, index=True
@@ -442,6 +469,16 @@ class AdminAuditLogModel(Base):
     target_type: Mapped[str] = mapped_column(String(30), nullable=False)
     target_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
     detail: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    # 成功/失败都要留痕：失败记录用于还原「谁试图做了什么、被什么规则拦下」
+    success: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true", index=True
+    )
+    error: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    # 结构化前后值，便于直接 diff；detail 继续放额外上下文
+    before: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    after: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    request_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    user_agent: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
     ip: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False, index=True
@@ -455,6 +492,56 @@ class AdminAuditLogModel(Base):
             "target_type": self.target_type,
             "target_id": self.target_id,
             "detail": self.detail,
+            "success": bool(self.success),
+            "error": self.error,
+            "before": self.before,
+            "after": self.after,
+            "request_id": self.request_id,
+            "user_agent": self.user_agent,
             "ip": self.ip,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class AlertEventModel(Base):
+    """成本 / 错误率告警事件。
+
+    只记录「已触发并已尝试通知」的事件，用于后台展示与冷却去重：
+    同一 ``kind`` 在冷却窗口内不重复通知，但仍然落库，方便回看。
+    """
+
+    __tablename__ = "alert_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    kind: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    severity: Mapped[str] = mapped_column(
+        String(10), nullable=False, default="warning", server_default="warning"
+    )
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    metrics: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    # 通知渠道与结果，便于判断「告警没发出去」是配置问题还是网络问题
+    channel: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    notified: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    notify_error: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, nullable=False, index=True
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": str(self.id),
+            "kind": self.kind,
+            "severity": self.severity,
+            "title": self.title,
+            "message": self.message,
+            "metrics": self.metrics,
+            "channel": self.channel,
+            "notified": bool(self.notified),
+            "notify_error": self.notify_error,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }

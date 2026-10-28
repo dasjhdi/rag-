@@ -26,8 +26,8 @@ services:
     # uses a republished copy of the official image (MinIO RELEASE.2025-09-07T16-13-09Z).
     image: elestio/minio:latest
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in deployments/.env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in deployments/.env}
     ports:
       - "9001:9000"  # Expose MinIO UI on a different port to avoid conflicts
     volumes:
@@ -49,6 +49,8 @@ services:
     environment:
       - ETCD_ENDPOINTS=etcd:2379
       - MINIO_ADDRESS=minio:9000
+      - MINIO_ACCESS_KEY_ID=${MINIO_ROOT_USER:?set MINIO_ROOT_USER in deployments/.env}
+      - MINIO_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in deployments/.env}
     volumes:
       - ./volumes/milvus:/var/lib/milvus
     ports:
@@ -95,6 +97,28 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - cookhero_net
+    restart: always
+
+  # 同域网关：托管前端静态资源，并把 /api、/media 反代到宿主上的后端。
+  # 前端与 API 同源，会话 Cookie 才能用 SameSite=Lax（跨站 POST 不带 Cookie）。
+  gateway:
+    # 可选：默认不参与 `docker compose up -d`，需要同域网关时加 --profile gateway
+    profiles: ["gateway"]
+    container_name: cookhero_gateway
+    image: caddy:2-alpine
+    ports:
+      - "8080:8080"   # HTTP（本地联调）
+      - "8443:8443"   # HTTPS（Caddy 内部 CA，用于验证 Secure Cookie）
+    volumes:
+      - ../frontend/dist:/srv:ro
+      - ./gateway/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./volumes/caddy:/data
+    environment:
+      - API_UPSTREAM=host.docker.internal:8000
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - cookhero_net
     restart: always

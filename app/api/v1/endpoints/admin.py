@@ -18,8 +18,10 @@ Write (all audited)
 
 设计约束
 --------
-* 权限按能力（capability）划分，而不是"能进后台"一刀切：
-  viewer 只读、support 可看会话、ops 可管账号、super_admin 全权。
+* 账号角色只有三种：user（普通用户）、admin（管理员）、super_admin（超级管理员）。
+  只有 admin / super_admin 能进入后台；进入后仍按能力（capability）细分：
+  admin 可读数据、看会话、启停与重置**普通用户**；super_admin 额外拥有改角色、
+  建号、删号、审计与重置任意密码。
 * 每个请求都回查数据库，因此改角色、禁用账号立即生效，无需重新登录。
 * 写操作先落审计再返回；危险操作带护栏（不能禁用自己、不能移除最后一个超管）。
 * 聚合全部下推 SQL，不做 Python 侧全表遍历。
@@ -28,31 +30,47 @@ Write (all audited)
 from __future__ import annotations
 
 import logging
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent.database.models import AgentMessageModel, AgentSessionModel
+from app.config import settings
+from app.agent.database.models import (
+    AgentMCPServerModel,
+    AgentMessageModel,
+    AgentSessionModel,
+    AgentSubagentConfigModel,
+)
 from app.database.models import (
     ADMIN_ROLES,
     AdminAuditLogModel,
     ConversationModel,
     KnowledgeDocumentModel,
     LLMUsageLogModel,
+    MessageModel,
+    RAGEvaluationModel,
     UserModel,
 )
 from app.database.session import get_session_context
 from app.diet.database.models import (
     DietLogItemModel,
+    DietPlanMealModel,
+    FamilyMemberModel,
     PantryItemModel,
     RecipeFeedbackModel,
+    RecipeReviewModel,
+    ShoppingListItemModel,
+    UserFoodPreferenceModel,
 )
 from app.security.admin_rate_limit import admin_rate_limit
+from app.services import totp_service
+from app.security.token_version import token_version_service
 from app.services import pricing
 
 logger = logging.getLogger(__name__)
@@ -65,19 +83,31 @@ router = APIRouter(
 
 # 能力矩阵：角色 -> 允许的操作。新增能力时只改这一处。
 CAPABILITIES: dict[str, frozenset[str]] = {
-    "viewer": frozenset({"read"}),
-    "support": frozenset({"read", "sessions"}),
-    "ops": frozenset({"read", "sessions", "user_status", "user_password"}),
+    # 管理员：只读 + 会话排障 + 管理普通用户（仅限级别低于自己，见 _can_manage_account）
+    "admin": frozenset(
+        {"read", "sessions", "user_status", "user_password:self_tier"}
+    ),
+    # 超级管理员：全权
     "super_admin": frozenset(
         {
             "read",
             "sessions",
             "user_status",
-            "user_password",
+            "user_password:all",
             "user_role",
+            "user_delete",
+            "user_create",
             "audit",
+            "alerts",
         }
     ),
+}
+
+# 角色级别：用于判定「能否操作某个账号」。普通用户为 0。
+ROLE_RANK: dict[str, int] = {
+    "user": 0,
+    "admin": 1,
+    "super_admin": 2,
 }
 
 ASSIGNABLE_ROLES = ("user", *sorted(ADMIN_ROLES))
@@ -113,10 +143,26 @@ async def get_current_user(request: Request) -> UserModel:
     return user
 
 
+def _assert_totp_policy(user: UserModel) -> None:
+    """超管未绑定双因子时，后台 API 一律拒绝（前端据此只显示绑定页）。
+
+    细节用结构化 detail 返回，前端可以按 code 分支，而不用匹配中文文案。
+    """
+    if totp_service.is_required_for(user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "totp_setup_required",
+                "message": "超级管理员需先绑定双因子（TOTP）才能访问后台数据",
+            },
+        )
+
+
 async def require_admin(user: UserModel = Depends(get_current_user)) -> UserModel:
     """Any admin role passes."""
     if user.role not in ADMIN_ROLES:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无后台访问权限")
+    _assert_totp_policy(user)
     return user
 
 
@@ -132,7 +178,49 @@ def require_capability(capability: str):
             )
         return user
 
+    # Expose the requirement for introspection: route-level tests assert that
+    # every operations endpoint is guarded and which capability it requires.
+    _dep.capability = capability  # type: ignore[attr-defined]
     return _dep
+
+
+def require_password_reset(user: UserModel = Depends(require_admin)) -> UserModel:
+    """重置密码的能力入口：超管持 :all，ops 持 :self_tier。
+
+    两者共用同一端点，具体到「能操作哪个账号」由 _can_manage_account 判定。
+    """
+    allowed = CAPABILITIES.get(user.role, frozenset())
+    if not ({"user_password:all", "user_password:self_tier"} & allowed):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"当前角色（{user.role}）无此操作权限：user_password",
+        )
+    return user
+
+
+def _can_manage_account(admin: UserModel, target: UserModel) -> bool:
+    """是否允许操作目标账号。
+
+    规则：超级管理员不受级别限制；管理员只能操作**严格低于**自己级别的账号，
+    即只能动普通用户，不能动其他管理员或超管，堵住「重置同级/超管密码后登录」
+    的提权路径。
+    """
+    if admin.role == "super_admin":
+        return True
+    return ROLE_RANK.get(target.role, 0) < ROLE_RANK.get(admin.role, 0)
+
+
+def _assert_can_manage_account(
+    admin: UserModel, target: UserModel, action: str
+) -> None:
+    if not _can_manage_account(admin, target):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                f"不能{action}同级或更高级别的账号"
+                f"（当前 {admin.role} → 目标 {target.role}）"
+            ),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -155,6 +243,19 @@ async def _scalar(session: AsyncSession, stmt) -> int:
     return int(value or 0)
 
 
+def _request_id(request: Request) -> str:
+    """优先复用上游传入的请求号，便于和应用日志对齐。"""
+    incoming = request.headers.get("X-Request-ID") or request.headers.get("X-Request-Id")
+    if incoming:
+        return incoming.strip()[:64]
+    return uuid.uuid4().hex[:16]
+
+
+def _user_agent(request: Request) -> Optional[str]:
+    value = request.headers.get("User-Agent")
+    return value.strip()[:300] if value else None
+
+
 async def _audit(
     session: AsyncSession,
     actor: UserModel,
@@ -163,6 +264,11 @@ async def _audit(
     target_type: str,
     target_id: Optional[str],
     detail: Optional[dict] = None,
+    *,
+    before: Optional[dict] = None,
+    after: Optional[dict] = None,
+    success: bool = True,
+    error: Optional[str] = None,
 ) -> None:
     """Append an audit record. Callers write it in the same transaction."""
     session.add(
@@ -173,9 +279,51 @@ async def _audit(
             target_type=target_type,
             target_id=target_id,
             detail=detail,
+            before=before,
+            after=after,
+            success=success,
+            error=(error or None) and error[:300],
+            request_id=_request_id(request),
+            user_agent=_user_agent(request),
             ip=_client_ip(request),
         )
     )
+
+
+async def record_failed_action(
+    *,
+    request: Request,
+    actor_username: Optional[str],
+    actor_id: Optional[str],
+    action: str,
+    target_type: str,
+    target_id: Optional[str],
+    error: str,
+    detail: Optional[dict] = None,
+) -> None:
+    """失败路径的审计：独立事务写入，避免随业务事务一起回滚。
+
+    由 main.py 的中间件在 ``/api/v1/admin`` 写操作返回 4xx/5xx 时调用。
+    """
+    try:
+        async with get_session_context() as session:
+            session.add(
+                AdminAuditLogModel(
+                    actor_id=str(actor_id) if actor_id else None,
+                    actor_username=actor_username or "anonymous",
+                    action=action,
+                    target_type=target_type,
+                    target_id=target_id,
+                    detail=detail,
+                    success=False,
+                    error=(error or "")[:300],
+                    request_id=_request_id(request),
+                    user_agent=_user_agent(request),
+                    ip=_client_ip(request),
+                )
+            )
+    except Exception as exc:  # 审计失败不能影响主响应
+        logger.warning("Failed to record admin failure audit: %s", exc)
 
 
 def _serialize_user(user: UserModel, counts: dict[str, dict[str, Any]]) -> dict[str, Any]:
@@ -497,6 +645,75 @@ async def list_users(
 # ---------------------------------------------------------------------------
 # POST /admin/users/{id}/status
 # ---------------------------------------------------------------------------
+class CreateUserRequest(BaseModel):
+    username: str = Field(..., min_length=3, max_length=32)
+    password: str = Field(..., min_length=MIN_PASSWORD_LENGTH, max_length=128)
+    role: str = "user"
+
+
+@router.post("/users", status_code=status.HTTP_201_CREATED)
+async def create_user(
+    payload: CreateUserRequest,
+    request: Request,
+    admin: UserModel = Depends(require_capability("user_create")),
+) -> dict[str, Any]:
+    """由超管直接创建账号（可选初始角色）。
+
+    与公开注册接口的区别：可以指定角色、不受注册开关/登录限流影响，并写审计。
+    """
+    username = payload.username.strip()
+    if not username:
+        raise HTTPException(status_code=400, detail="用户名不能为空")
+    if payload.role not in ASSIGNABLE_ROLES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"角色不合法，可选值：{', '.join(ASSIGNABLE_ROLES)}",
+        )
+    # 纵深防御：非超管即便拿到能力也不能创建超管
+    if payload.role == "super_admin" and admin.role != "super_admin":
+        raise HTTPException(status_code=403, detail="只有超级管理员可以创建超级管理员")
+
+    async with get_session_context() as session:
+        existing = (
+            await session.execute(
+                select(UserModel).where(UserModel.username == username)
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail="用户名已存在"
+            )
+
+        user = UserModel(
+            username=username,
+            password_hash=bcrypt.hashpw(
+                payload.password.encode("utf-8"), bcrypt.gensalt()
+            ).decode("utf-8"),
+            role=payload.role,
+            is_active=True,
+        )
+        session.add(user)
+        await _audit(
+            session,
+            admin,
+            request,
+            action="user.create",
+            target_type="user",
+            target_id=str(user.id),
+            detail={"username": username, "role": payload.role},
+            after={"username": username, "role": payload.role, "is_active": True},
+        )
+        await session.flush()
+
+    logger.info("Admin %s created user %s (role=%s)", admin.username, username, payload.role)
+    return {
+        "id": str(user.id),
+        "username": user.username,
+        "role": user.role,
+        "is_active": bool(user.is_active),
+    }
+
+
 class UserStatusRequest(BaseModel):
     is_active: bool
 
@@ -514,6 +731,8 @@ async def set_user_status(
 
         if str(target.id) == str(admin.id) and not payload.is_active:
             raise HTTPException(status_code=400, detail="不能禁用当前登录的账号")
+        # 与重置密码同一条级别规则：管理员不能动管理员/超管
+        _assert_can_manage_account(admin, target, "启用或禁用")
         if target.role == "super_admin" and not payload.is_active:
             remaining = await _active_super_admin_count(session, exclude_id=str(target.id))
             if remaining < 1:
@@ -528,7 +747,9 @@ async def set_user_status(
             action="user.enable" if payload.is_active else "user.disable",
             target_type="user",
             target_id=str(target.id),
-            detail={"username": target.username, "before": before, "after": payload.is_active},
+            detail={"username": target.username},
+            before={"is_active": before},
+            after={"is_active": payload.is_active},
         )
         await session.flush()
 
@@ -576,7 +797,9 @@ async def set_user_role(
             action="user.role",
             target_type="user",
             target_id=str(target.id),
-            detail={"username": target.username, "before": before, "after": new_role},
+            detail={"username": target.username},
+            before={"role": before},
+            after={"role": new_role},
         )
         await session.flush()
 
@@ -595,15 +818,22 @@ async def reset_user_password(
     user_id: str,
     payload: ResetPasswordRequest,
     request: Request,
-    admin: UserModel = Depends(require_capability("user_password")),
+    admin: UserModel = Depends(require_password_reset),
 ) -> dict[str, Any]:
-    """Reset a password. Existing JWTs stay valid until they expire."""
+    """Reset a password and revoke every token already issued to that user.
+
+    ops 只能重置级别更低的账号；超管（user_password:all）不受限制。
+    """
     async with get_session_context() as session:
         target = await _get_target_user(session, user_id)
+        _assert_can_manage_account(admin, target, "重置密码")
 
         target.password_hash = bcrypt.hashpw(
             payload.new_password.encode("utf-8"), bcrypt.gensalt()
         ).decode("utf-8")
+        # 递增令牌版本，使旧令牌立即失效（改密即登出所有设备）
+        old_version = int(getattr(target, "token_version", 0) or 0)
+        target.token_version = old_version + 1
         await _audit(
             session,
             admin,
@@ -611,15 +841,250 @@ async def reset_user_password(
             action="user.reset_password",
             target_type="user",
             target_id=str(target.id),
-            detail={"username": target.username},
+            detail={"username": target.username, "tokens_revoked": True},
+            before={"token_version": old_version},
+            after={"token_version": old_version + 1},
         )
         await session.flush()
+
+    # 同步刷新缓存，避免旧版本短时间内仍被命中
+    await token_version_service.set_cached(user_id, int(target.token_version))
 
     return {
         "id": user_id,
         "reset": True,
-        "note": "已重置。该用户已签发的令牌在过期前仍然有效。",
+        "note": "已重置，该用户此前签发的令牌已失效。",
     }
+
+
+# ---------------------------------------------------------------------------
+# DELETE /admin/users/{id}
+# ---------------------------------------------------------------------------
+async def _owned_data_counts(session: AsyncSession, user_id: Any) -> dict[str, int]:
+    """统计账号名下的数据量，用于删除前确认与审计留痕。"""
+    uid = str(user_id)
+    conv_ids = (
+        (
+            await session.execute(
+                select(ConversationModel.id).where(ConversationModel.user_id == uid)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    session_ids = (
+        (
+            await session.execute(
+                select(AgentSessionModel.id).where(AgentSessionModel.user_id == uid)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    async def count(model: Any, condition: Any) -> int:
+        result = await session.execute(
+            select(func.count()).select_from(model).where(condition)
+        )
+        return int(result.scalar_one())
+
+    counts = {
+        "conversations": len(conv_ids),
+        "messages": (
+            await count(MessageModel, MessageModel.conversation_id.in_(conv_ids))
+            if conv_ids
+            else 0
+        ),
+        "agent_sessions": len(session_ids),
+        "agent_messages": (
+            await count(AgentMessageModel, AgentMessageModel.session_id.in_(session_ids))
+            if session_ids
+            else 0
+        ),
+        "knowledge_documents": await count(
+            KnowledgeDocumentModel, KnowledgeDocumentModel.user_id == user_id
+        ),
+        "diet_log_items": await count(DietLogItemModel, DietLogItemModel.user_id == uid),
+        "diet_plan_meals": await count(
+            DietPlanMealModel, DietPlanMealModel.user_id == uid
+        ),
+        "pantry_items": await count(PantryItemModel, PantryItemModel.user_id == uid),
+        "shopping_list_items": await count(
+            ShoppingListItemModel, ShoppingListItemModel.user_id == uid
+        ),
+        "family_members": await count(
+            FamilyMemberModel, FamilyMemberModel.owner_user_id == uid
+        ),
+        "recipe_feedback": await count(
+            RecipeFeedbackModel, RecipeFeedbackModel.user_id == uid
+        ),
+        "recipe_reviews": await count(
+            RecipeReviewModel, RecipeReviewModel.user_id == uid
+        ),
+        "llm_usage_logs": await count(LLMUsageLogModel, LLMUsageLogModel.user_id == uid),
+    }
+    return counts
+
+
+_COUNT_LABELS = {
+    "conversations": "会话",
+    "messages": "消息",
+    "agent_sessions": "Agent 会话",
+    "agent_messages": "Agent 消息",
+    "knowledge_documents": "知识库文档",
+    "diet_log_items": "饮食记录",
+    "diet_plan_meals": "饮食计划餐次",
+    "pantry_items": "库存条目",
+    "shopping_list_items": "采购清单项",
+    "family_members": "家庭成员",
+    "recipe_feedback": "菜谱反馈",
+    "recipe_reviews": "菜谱评价",
+    "llm_usage_logs": "用量日志",
+}
+
+
+def _describe_counts(counts: dict[str, int]) -> str:
+    parts = [
+        f"{_COUNT_LABELS.get(key, key)} {value}"
+        for key, value in counts.items()
+        if value
+    ]
+    return "、".join(parts)
+
+
+@router.delete("/users/{user_id}")
+async def delete_user(
+    user_id: str,
+    request: Request,
+    force: bool = Query(
+        False, description="true 时连带删除该账号名下全部数据；false 遇到有数据则拒绝"
+    ),
+    admin: UserModel = Depends(require_capability("user_delete")),
+) -> dict[str, Any]:
+    """删除账号。
+
+    默认保守：账号名下有数据时返回 409，避免误删；
+    确认后传 ``force=true``，在同一事务内按依赖顺序清理数据再删除账号。
+    """
+    async with get_session_context() as session:
+        target = await _get_target_user(session, user_id)
+
+        if str(target.id) == str(admin.id):
+            raise HTTPException(status_code=400, detail="不能删除当前登录的账号")
+        _assert_can_manage_account(admin, target, "删除")
+        if target.role == "super_admin":
+            remaining = await _active_super_admin_count(
+                session, exclude_id=str(target.id)
+            )
+            if remaining < 1:
+                raise HTTPException(
+                    status_code=400, detail="系统至少需要保留一个可用的超级管理员"
+                )
+
+        counts = await _owned_data_counts(session, target.id)
+        owned = {key: value for key, value in counts.items() if value}
+        if owned and not force:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"该账号名下仍有数据：{_describe_counts(owned)}。"
+                    "请改用禁用账号，或确认后传 force=true 连带删除。"
+                ),
+            )
+
+        uid = str(target.id)
+        conv_ids = (
+            (
+                await session.execute(
+                    select(ConversationModel.id).where(ConversationModel.user_id == uid)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        session_ids = (
+            (
+                await session.execute(
+                    select(AgentSessionModel.id).where(
+                        AgentSessionModel.user_id == uid
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        # 按依赖顺序清理（除 knowledge_documents 外，其余外键关系在库层面未声明）
+        if conv_ids:
+            await session.execute(
+                delete(MessageModel).where(MessageModel.conversation_id.in_(conv_ids))
+            )
+        await session.execute(
+            delete(RAGEvaluationModel).where(RAGEvaluationModel.user_id == uid)
+        )
+        await session.execute(
+            delete(ConversationModel).where(ConversationModel.user_id == uid)
+        )
+        if session_ids:
+            await session.execute(
+                delete(AgentMessageModel).where(
+                    AgentMessageModel.session_id.in_(session_ids)
+                )
+            )
+        await session.execute(
+            delete(AgentSessionModel).where(AgentSessionModel.user_id == uid)
+        )
+        for model, column in (
+            (AgentMCPServerModel, AgentMCPServerModel.user_id),
+            (AgentSubagentConfigModel, AgentSubagentConfigModel.user_id),
+            (DietLogItemModel, DietLogItemModel.user_id),
+            (DietPlanMealModel, DietPlanMealModel.user_id),
+            (PantryItemModel, PantryItemModel.user_id),
+            (ShoppingListItemModel, ShoppingListItemModel.user_id),
+            (UserFoodPreferenceModel, UserFoodPreferenceModel.user_id),
+            (RecipeFeedbackModel, RecipeFeedbackModel.user_id),
+            (RecipeReviewModel, RecipeReviewModel.user_id),
+            (LLMUsageLogModel, LLMUsageLogModel.user_id),
+            (FamilyMemberModel, FamilyMemberModel.owner_user_id),
+        ):
+            await session.execute(delete(model).where(column == uid))
+
+        # knowledge_documents.user_id 是 uuid 类型（且带 ON DELETE CASCADE），单独处理
+        await session.execute(
+            delete(KnowledgeDocumentModel).where(
+                KnowledgeDocumentModel.user_id == target.id
+            )
+        )
+
+        await session.execute(delete(UserModel).where(UserModel.id == target.id))
+        await _audit(
+            session,
+            admin,
+            request,
+            action="user.delete",
+            target_type="user",
+            target_id=uid,
+            detail={
+                "username": target.username,
+                "role": target.role,
+                "force": force,
+                "counts": counts,
+            },
+            before={
+                "username": target.username,
+                "role": target.role,
+                "is_active": bool(target.is_active),
+            },
+        )
+        await session.flush()
+
+    logger.info("Admin %s deleted user %s (force=%s)", admin.username, uid, force)
+    return {
+        "id": user_id,
+        "deleted": True,
+        "counts": counts,
+    }
+
 
 
 # ---------------------------------------------------------------------------
@@ -630,16 +1095,31 @@ async def list_audit(
     admin: UserModel = Depends(require_capability("audit")),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
+    action: Optional[str] = Query(None, description="按动作前缀过滤，如 user."),
+    success: Optional[bool] = Query(None, description="只看成功/失败"),
+    actor: Optional[str] = Query(None, description="按操作人用户名过滤"),
 ) -> dict[str, Any]:
-    """Paginated audit trail, newest first."""
+    """Paginated audit trail, newest first. 失败记录同样可查。"""
     offset = (page - 1) * page_size
+    conditions = []
+    if action:
+        conditions.append(AdminAuditLogModel.action.like(f"{action}%"))
+    if success is not None:
+        conditions.append(AdminAuditLogModel.success.is_(success))
+    if actor:
+        conditions.append(AdminAuditLogModel.actor_username == actor)
+
     async with get_session_context() as session:
-        total = await _scalar(session, select(func.count()).select_from(AdminAuditLogModel))
+        count_stmt = select(func.count()).select_from(AdminAuditLogModel)
+        rows_stmt = select(AdminAuditLogModel)
+        for condition in conditions:
+            count_stmt = count_stmt.where(condition)
+            rows_stmt = rows_stmt.where(condition)
+        total = await _scalar(session, count_stmt)
         rows = list(
             (
                 await session.execute(
-                    select(AdminAuditLogModel)
-                    .order_by(AdminAuditLogModel.created_at.desc())
+                    rows_stmt.order_by(AdminAuditLogModel.created_at.desc())
                     .offset(offset)
                     .limit(page_size)
                 )
@@ -977,3 +1457,98 @@ async def get_usage(
             for uid, calls, tokens in top_rows
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# GET /admin/alerts  (告警事件与巡检状态)
+# ---------------------------------------------------------------------------
+@router.get("/alerts")
+async def list_alerts(
+    admin: UserModel = Depends(require_capability("read")),
+    limit: int = Query(20, ge=1, le=100),
+) -> dict[str, Any]:
+    """最近的告警事件，附当前阈值与巡检状态，便于判断「没告警」是正常还是没跑。"""
+    from app.services.alerting_service import alerting_service
+
+    items = await alerting_service.recent_events(limit)
+    cfg = settings.alerts
+    return {
+        "items": items,
+        "config": {
+            "enabled": cfg.enabled,
+            "channel": cfg.channel,
+            "notify_ready": cfg.should_notify(),
+            "interval_seconds": cfg.interval_seconds,
+            "cooldown_minutes": cfg.cooldown_minutes,
+            "thresholds": {
+                "cost_spike_ratio": cfg.thresholds.cost_spike_ratio,
+                "cost_min_amount": cfg.thresholds.cost_min_amount,
+                "error_rate": cfg.thresholds.error_rate,
+                "error_min_samples": cfg.thresholds.error_min_samples,
+                "eval_error_rate": cfg.thresholds.eval_error_rate,
+                "eval_min_samples": cfg.thresholds.eval_min_samples,
+            },
+        },
+        "last_run_at": (
+            alerting_service.last_run_at.isoformat()
+            if alerting_service.last_run_at
+            else None
+        ),
+        "last_error": alerting_service.last_error,
+    }
+
+
+@router.post("/alerts/check")
+async def run_alert_check(
+    request: Request,
+    admin: UserModel = Depends(require_capability("alerts")),
+) -> dict[str, Any]:
+    """立即执行一次巡检（会按冷却窗口推送），用于验证阈值与 webhook 配置。"""
+    from app.services.alerting_service import alerting_service
+
+    created = await alerting_service.check_and_notify()
+
+    async with get_session_context() as session:
+        await _audit(
+            session,
+            admin,
+            request,
+            action="alert.check",
+            target_type="alert",
+            target_id=None,
+            detail={"triggered": len(created), "kinds": [item["kind"] for item in created]},
+            after={"triggered": len(created)},
+        )
+        await session.flush()
+
+    return {"triggered": len(created), "items": created}
+
+
+@router.post("/alerts/test")
+async def send_alert_test(
+    request: Request,
+    admin: UserModel = Depends(require_capability("alerts")),
+) -> dict[str, Any]:
+    """发送一条测试消息，验证 webhook 是否配通（不写告警事件表）。"""
+    from app.services.alerting_service import alerting_service
+
+    notified, info = await alerting_service.send_test()
+
+    if not notified:
+        # 失败由 main.py 的中间件统一记录（动作 alert.test），避免重复两条
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=info)
+
+    async with get_session_context() as session:
+        await _audit(
+            session,
+            admin,
+            request,
+            action="alert.test",
+            target_type="alert",
+            target_id=None,
+            detail={"channel": info},
+            after={"notified": True},
+        )
+        await session.flush()
+
+    return {"notified": True, "channel": info}

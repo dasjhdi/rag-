@@ -103,10 +103,44 @@ class LLMUsageCallbackHandler(BaseCallbackHandler):
             else None,
             "total_tokens": usage_data.get("total_tokens") if usage_data else None,
             "duration_ms": duration_ms,
+            "status": "success",
+            "error_type": None,
         }
 
         # 异步写入数据库
         self._schedule_write(log_data)
+
+    def on_llm_error(
+        self,
+        error: BaseException,
+        *,
+        run_id: UUID,
+        **kwargs: Any,
+    ) -> None:
+        """调用失败也要落一行，否则「错误率」永远算不出来。"""
+        duration_ms = (
+            int((time.time() - self._start_time.pop(str(run_id), time.time())) * 1000)
+        )
+        ctx = get_llm_context()
+        if not ctx:
+            return
+
+        self._schedule_write(
+            {
+                "request_id": ctx.request_id,
+                "module_name": ctx.module_name,
+                "user_id": ctx.user_id,
+                "conversation_id": ctx.conversation_id,
+                "model_name": None,
+                "tool_name": None,
+                "input_tokens": None,
+                "output_tokens": None,
+                "total_tokens": None,
+                "duration_ms": duration_ms,
+                "status": "error",
+                "error_type": type(error).__name__[:80],
+            }
+        )
 
     def _get_first_generation(self, response: LLMResult) -> Any:
         """获取第一个 generation"""
@@ -220,6 +254,8 @@ class LLMUsageCallbackHandler(BaseCallbackHandler):
                     output_tokens=log_data.get("output_tokens"),
                     total_tokens=log_data.get("total_tokens"),
                     duration_ms=log_data.get("duration_ms"),
+                    status=log_data.get("status", "success"),
+                    error_type=log_data.get("error_type"),
                 )
                 session.add(log)
 

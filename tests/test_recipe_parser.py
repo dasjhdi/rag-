@@ -120,3 +120,51 @@ def test_recipe_payload_contains_steps_and_nutrition_metadata():
     assert payload["nutrition"]["source"] == "local_food_table"
     assert payload["steps"][0]["index"] == 1
     assert payload["unit_system"] == "metric"
+
+
+MID_QUANTITY_SAMPLE = """# 蒜香啤酒鸭
+
+2人份
+
+## 必备原料和工具
+- 大蒜 4 颗 ,拍散备用
+- 蒜苗 2 根 切段备用
+- 小米辣 3 颗，切两段即可(不吃辣的可以不用)
+- 鸭肉 1000g
+- 盐 适量
+
+## 操作
+1. 炒香配料。
+"""
+
+
+def test_parse_mid_quantity_with_prep_notes():
+    """HowToCook 常见写法：数量夹在名称与做法说明之间。"""
+    recipe = parse_recipe_document(
+        "recipe-7",
+        "蒜香啤酒鸭",
+        MID_QUANTITY_SAMPLE,
+        source="test",
+    )
+    by_name = {item.name: item for item in recipe.ingredients}
+
+    garlic = by_name["蒜"]
+    assert garlic.quantity == 4.0
+    assert garlic.unit == "颗"
+    assert garlic.scalable
+    # 做法说明不并入名称
+    assert "拍散" not in garlic.name
+
+    sprout = by_name["蒜苗"]
+    assert sprout.quantity == 2.0
+    assert sprout.scalable
+
+    chili = by_name["辣椒"]
+    assert chili.quantity == 3.0
+    assert chili.scalable
+
+    duck = by_name["鸭肉"]
+    assert duck.quantity == 1000.0
+
+    salt = by_name["盐"]
+    assert salt.scalable is False

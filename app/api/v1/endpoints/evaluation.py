@@ -2,13 +2,17 @@
 """
 API endpoints for RAG evaluation metrics.
 Provides access to evaluation statistics, trends, and quality alerts.
+
+运营/开发侧接口：仅管理后台可达，普通登录用户调用返回 403。
+聚合类接口按全平台统计（不按 user_id 过滤），明细类接口复用「会话排障」能力位。
 """
 
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
+from app.api.v1.endpoints.admin import require_capability
 from app.config import settings
 from app.database.evaluation_repository import evaluation_repository
 
@@ -20,6 +24,7 @@ async def get_evaluation_statistics(
     request: Request,
     start_date: Optional[str] = Query(None, description="Start date (ISO format)"),
     end_date: Optional[str] = Query(None, description="End date (ISO format)"),
+    _admin=Depends(require_capability("read")),
 ):
     """
     Get aggregated evaluation statistics.
@@ -34,8 +39,8 @@ async def get_evaluation_statistics(
         start_date: Filter by start date (ISO format, e.g., "2024-01-01")
         end_date: Filter by end date (ISO format, e.g., "2024-01-31")
     """
-    # Get user_id from auth if available
-    user_id = getattr(request.state, "user_id", None)
+    # Admin console view: aggregate across all users.
+    user_id = None
 
     # Parse dates
     start_dt = None
@@ -65,6 +70,7 @@ async def get_conversation_evaluations(
     request: Request,
     conversation_id: str,
     limit: int = Query(100, ge=1, le=500),
+    _admin=Depends(require_capability("sessions")),
 ):
     """
     Get evaluation details for a specific conversation.
@@ -89,6 +95,7 @@ async def get_evaluation_trends(
     request: Request,
     days: int = Query(7, ge=1, le=90, description="Number of days to look back"),
     granularity: str = Query("day", regex="^(day|hour)$", description="Grouping granularity"),
+    _admin=Depends(require_capability("read")),
 ):
     """
     Get evaluation metric trends over time.
@@ -100,7 +107,8 @@ async def get_evaluation_trends(
         days: Number of days to look back (1-90)
         granularity: Grouping granularity ("day" or "hour")
     """
-    user_id = getattr(request.state, "user_id", None)
+    # Admin console view: aggregate across all users.
+    user_id = None
 
     trends = await evaluation_repository.get_trends(
         days=days,
@@ -120,6 +128,7 @@ async def get_evaluation_trends(
 async def get_quality_alerts(
     request: Request,
     limit: int = Query(50, ge=1, le=200),
+    _admin=Depends(require_capability("read")),
 ):
     """
     Get evaluations that fall below quality thresholds.
@@ -129,7 +138,8 @@ async def get_quality_alerts(
 
     The thresholds are defined in the application configuration.
     """
-    user_id = getattr(request.state, "user_id", None)
+    # Admin console view: aggregate across all users.
+    user_id = None
 
     # Get thresholds from config
     thresholds = {
@@ -151,7 +161,9 @@ async def get_quality_alerts(
 
 
 @router.get("/health")
-async def evaluation_health():
+async def evaluation_health(
+    _admin=Depends(require_capability("read")),
+):
     """
     Check the health status of the evaluation system.
 
@@ -178,6 +190,7 @@ async def evaluation_health():
 async def get_evaluation_detail(
     request: Request,
     evaluation_id: str,
+    _admin=Depends(require_capability("sessions")),
 ):
     """
     Get detailed information for a single evaluation.

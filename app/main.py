@@ -28,6 +28,8 @@ from app.database.document_repository import DocumentRepository
 from app.services.auth_service import auth_service
 from app.services.rag_service import rag_service_instance
 from app.security.middleware.rate_limiter import rate_limiter
+from app.security.session_cookies import ACCESS_COOKIE
+from app.security.token_version import token_version_service
 from app.security.sanitizer import setup_secure_logging
 from app.security.audit import audit_logger
 from app.api import media as media_api
@@ -90,8 +92,21 @@ async def lifespan(app: FastAPI):
         # Initialize auth service with Redis client for login tracking
         auth_service.set_redis(rag_service_instance.cache_manager.redis_client)
         logger.info("Auth service initialized with Redis for login tracking.")
+        # Token version cache shares the same Redis client
+        token_version_service.set_redis(rag_service_instance.cache_manager.redis_client)
+        logger.info("Token version cache initialized with Redis.")
+        # 告警冷却窗口复用同一 Redis（没有 Redis 时自动回退查库）
+        from app.services.alerting_service import alerting_service
+
+        alerting_service.set_redis(rag_service_instance.cache_manager.redis_client)
+
+    from app.services.alerting_service import alerting_service
+
+    await alerting_service.start()
 
     yield
+
+    await alerting_service.stop()
     # Shutdown
     logger.info("Closing database connections...")
     await close_db()
@@ -106,13 +121,10 @@ app = FastAPI(
 )
 
 # CORS middleware for frontend development
+# 允许来源由配置驱动（CORS_ORIGINS），生产只放行正式域名
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:8000",
-        "http://localhost:8080",
-    ],
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -121,6 +133,8 @@ app.add_middleware(
 
 EXEMPT_PATHS = {
     f"{settings.API_V1_STR}/auth/login",
+    # 第二步动态码校验：此时用户还没有访问令牌
+    f"{settings.API_V1_STR}/auth/login/totp",
     f"{settings.API_V1_STR}/auth/register",
     f"{settings.API_V1_STR}/auth/refresh",
 }
@@ -150,6 +164,90 @@ async def security_headers_middleware(request: Request, call_next):
     return response
 
 
+_ADMIN_WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+def _admin_action_of(route_path: str) -> tuple[str, str]:
+    """把路由模板映射成审计动作名，失败记录也能看出「想做什么」。"""
+    suffix_map = {
+        "/status": ("user.status", "user"),
+        "/role": ("user.role", "user"),
+        "/reset-password": ("user.reset_password", "user"),
+        "/alerts/check": ("alert.check", "alert"),
+        "/alerts/test": ("alert.test", "alert"),
+    }
+    for suffix, mapped in suffix_map.items():
+        if route_path.endswith(suffix):
+            return mapped
+    if route_path.endswith("/users"):
+        return "user.create", "user"
+    if "/users/{user_id}" in route_path:
+        return "user.delete", "user"
+    return "admin.write", "admin"
+
+
+@app.middleware("http")
+async def admin_audit_middleware(request: Request, call_next):
+    """后台写操作失败也要留痕：记录操作人、目标、错误与请求号。
+
+    成功路径由各端点在同一事务内落审计；这里只兜失败（4xx/5xx），
+    因为失败会让业务事务回滚，必须用独立事务写。
+    """
+    path = request.url.path
+    admin_prefix = f"{settings.API_V1_STR}/admin"
+    if not path.startswith(admin_prefix) or request.method not in _ADMIN_WRITE_METHODS:
+        return await call_next(request)
+
+    response = await call_next(request)
+    if response.status_code < 400 or response.status_code == 401:
+        return response
+
+    # 读取响应体以拿到 detail（后台写操作都是 JSON，不是流式）
+    body = b""
+    if hasattr(response, "body_iterator"):
+        async for chunk in response.body_iterator:
+            body += chunk
+    detail_text = ""
+    if body:
+        try:
+            import json as _json
+
+            payload = _json.loads(body.decode("utf-8"))
+            detail = payload.get("detail")
+            detail_text = detail if isinstance(detail, str) else _json.dumps(
+                detail, ensure_ascii=False
+            )
+        except Exception:
+            detail_text = body.decode("utf-8", errors="ignore")
+
+    route = request.scope.get("route")
+    route_path = getattr(route, "path", path)
+    action, target_type = _admin_action_of(route_path)
+    path_params = request.scope.get("path_params") or {}
+
+    from app.api.v1.endpoints.admin import record_failed_action
+
+    await record_failed_action(
+        request=request,
+        actor_username=getattr(request.state, "username", None),
+        actor_id=getattr(request.state, "user_id", None),
+        action=action,
+        target_type=target_type,
+        target_id=path_params.get("user_id"),
+        error=detail_text or f"HTTP {response.status_code}",
+        detail={"path": path, "method": request.method, "status_code": response.status_code},
+    )
+
+    from fastapi.responses import Response
+
+    return Response(
+        content=body,
+        status_code=response.status_code,
+        headers=dict(response.headers),
+        media_type=response.media_type,
+    )
+
+
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
     """Rate limiting middleware using Redis."""
@@ -157,10 +255,15 @@ async def rate_limit_middleware(request: Request, call_next):
     rate_limit_response = await rate_limiter.check_rate_limit(request)
     if rate_limit_response:
         # Log rate limit exceeded
+        denied_limit, denied_current = getattr(
+            request.state, "rate_limit_denied", (0, 0)
+        )
         audit_logger.rate_limit_exceeded(
             request=request,
             user_id=getattr(request.state, "user_id", None),
             endpoint=str(request.url.path),
+            limit=denied_limit,
+            current=denied_current,
         )
         return rate_limit_response
 
@@ -183,21 +286,78 @@ async def auth_gateway(request: Request, call_next):
         return await call_next(request)
 
     auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.lower().startswith("bearer "):
+    cookie_token = request.cookies.get(ACCESS_COOKIE)
+    token = None
+    auth_source = None
+    if auth_header and auth_header.lower().startswith("bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+        auth_source = "bearer"
+    elif cookie_token:
+        token = cookie_token
+        auth_source = "cookie"
+
+    if not token:
         return JSONResponse(status_code=401, content={"detail": "需要登录"})
 
-    token = auth_header.split(" ", 1)[1].strip()
     identity = auth_service.decode_token(token)
     if not identity or not identity.get("username"):
         return JSONResponse(
             status_code=401, content={"detail": "登录已失效，请重新登录"}
         )
 
+    # 令牌版本校验：改密 / 管理员重置 / 主动登出后，旧令牌立即失效
+    if not await token_version_service.matches(
+        identity.get("user_id"), identity.get("tv")
+    ):
+        return JSONResponse(
+            status_code=401, content={"detail": "登录已失效，请重新登录"}
+        )
+
+    # CSRF 防护：Cookie 会自动随请求发送，因此对写操作校验来源。
+    # SameSite=Lax 已拦截跨站 POST；这里再对"跨站但已带上 Cookie"的
+    # 边缘情况做一层显式校验。
+    if auth_source == "cookie" and request.method not in {"GET", "HEAD", "OPTIONS"}:
+        if not _same_origin_request(request):
+            return JSONResponse(status_code=403, content={"detail": "请求来源不被允许"})
+
     # Attach user info to request state for downstream use (e.g., filtering by user)
     request.state.username = identity.get("username")
     request.state.user_id = identity.get("user_id")
 
     return await call_next(request)
+
+
+def _origin_of(url: str) -> str:
+    """scheme://host[:port] for an absolute URL (empty string when invalid)."""
+    from urllib.parse import urlsplit
+
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return ""
+    if not parts.scheme or not parts.netloc:
+        return ""
+    return f"{parts.scheme}://{parts.netloc}".lower()
+
+
+def _same_origin_request(request: Request) -> bool:
+    """True when Origin/Referer matches the request host or an allowed origin."""
+    allowed = {origin.rstrip("/").lower() for origin in settings.CORS_ORIGINS}
+    host_origin = _origin_of(str(request.base_url))
+    if host_origin:
+        allowed.add(host_origin)
+
+    origin = request.headers.get("Origin")
+    if origin:
+        return origin.rstrip("/").lower() in allowed
+
+    referer = request.headers.get("Referer")
+    if referer:
+        return _origin_of(referer) in allowed
+
+    # 非浏览器客户端（cURL、脚本）通常不带这两个头。
+    # 它们无法被第三方网页借用来发请求，故放行。
+    return True
 
 
 # Include the API routers

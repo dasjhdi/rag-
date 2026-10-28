@@ -2,13 +2,17 @@
 """
 API endpoints for LLM usage statistics.
 Provides access to token usage, model distribution, and module-level metrics.
+
+运营/开发侧接口：仅管理后台可达，普通登录用户调用返回 403。
+聚合类接口按全平台统计（不按 user_id 过滤），明细类接口复用「会话排障」能力位。
 """
 
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
+from app.api.v1.endpoints.admin import require_capability
 from app.database.llm_usage_repository import llm_usage_repository
 
 router = APIRouter(prefix="/llm-stats", tags=["LLM Statistics"])
@@ -20,6 +24,7 @@ async def get_llm_stats_summary(
     start_date: Optional[str] = Query(None, description="Start date (ISO format)"),
     end_date: Optional[str] = Query(None, description="End date (ISO format)"),
     conversation_id: Optional[str] = Query(None, description="Filter by conversation ID"),
+    _admin=Depends(require_capability("read")),
 ):
     """
     Get aggregated LLM usage summary.
@@ -35,8 +40,8 @@ async def get_llm_stats_summary(
         end_date: Filter by end date (ISO format, e.g., "2024-01-31")
         conversation_id: Filter by specific conversation
     """
-    # Get user_id from auth if available
-    user_id = getattr(request.state, "user_id", None)
+    # Admin console view: aggregate across all users.
+    user_id = None
 
     # Parse dates
     start_dt = None
@@ -69,6 +74,7 @@ async def get_llm_stats_time_series(
     granularity: str = Query("day", regex="^(day|hour)$", description="Grouping granularity"),
     module_name: Optional[str] = Query(None, description="Filter by module name"),
     model_name: Optional[str] = Query(None, description="Filter by model name"),
+    _admin=Depends(require_capability("read")),
 ):
     """
     Get LLM usage trends over time.
@@ -82,7 +88,8 @@ async def get_llm_stats_time_series(
         module_name: Filter by specific module
         model_name: Filter by specific model
     """
-    user_id = getattr(request.state, "user_id", None)
+    # Admin console view: aggregate across all users.
+    user_id = None
 
     time_series = await llm_usage_repository.get_time_series(
         days=days,
@@ -105,6 +112,7 @@ async def get_distribution_by_module(
     request: Request,
     start_date: Optional[str] = Query(None, description="Start date (ISO format)"),
     end_date: Optional[str] = Query(None, description="End date (ISO format)"),
+    _admin=Depends(require_capability("read")),
 ):
     """
     Get LLM usage distribution by module.
@@ -115,7 +123,8 @@ async def get_distribution_by_module(
         start_date: Filter by start date (ISO format)
         end_date: Filter by end date (ISO format)
     """
-    user_id = getattr(request.state, "user_id", None)
+    # Admin console view: aggregate across all users.
+    user_id = None
 
     # Parse dates
     start_dt = None
@@ -148,6 +157,7 @@ async def get_distribution_by_model(
     request: Request,
     start_date: Optional[str] = Query(None, description="Start date (ISO format)"),
     end_date: Optional[str] = Query(None, description="End date (ISO format)"),
+    _admin=Depends(require_capability("read")),
 ):
     """
     Get LLM usage distribution by model.
@@ -158,7 +168,8 @@ async def get_distribution_by_model(
         start_date: Filter by start date (ISO format)
         end_date: Filter by end date (ISO format)
     """
-    user_id = getattr(request.state, "user_id", None)
+    # Admin console view: aggregate across all users.
+    user_id = None
 
     # Parse dates
     start_dt = None
@@ -191,6 +202,7 @@ async def get_conversation_llm_stats(
     request: Request,
     conversation_id: str,
     limit: int = Query(100, ge=1, le=500),
+    _admin=Depends(require_capability("sessions")),
 ):
     """
     Get LLM usage details for a specific conversation.
@@ -219,7 +231,7 @@ async def get_conversation_llm_stats(
 
 
 @router.get("/modules")
-async def get_available_modules():
+async def get_available_modules(_admin=Depends(require_capability("read"))):
     """
     Get list of available module names that have logged LLM usage.
 
@@ -234,7 +246,7 @@ async def get_available_modules():
 
 
 @router.get("/models")
-async def get_available_models():
+async def get_available_models(_admin=Depends(require_capability("read"))):
     """
     Get list of available model names that have been used.
 
@@ -249,7 +261,7 @@ async def get_available_models():
 
 
 @router.get("/tools")
-async def get_available_tools():
+async def get_available_tools(_admin=Depends(require_capability("read"))):
     """
     Get list of available tool names that have been used.
 
@@ -270,6 +282,7 @@ async def get_distribution_by_tool(
     end_date: Optional[str] = Query(None, description="End date (ISO format)"),
     model_name: Optional[str] = Query(None, description="Filter by model name"),
     module_name: Optional[str] = Query(None, description="Filter by module name"),
+    _admin=Depends(require_capability("read")),
 ):
     """
     Get LLM usage distribution by tool.
@@ -282,7 +295,8 @@ async def get_distribution_by_tool(
         model_name: Filter by specific model
         module_name: Filter by specific module
     """
-    user_id = getattr(request.state, "user_id", None)
+    # Admin console view: aggregate across all users.
+    user_id = None
 
     # Parse dates
     start_dt = None
@@ -319,6 +333,7 @@ async def get_tool_time_series(
     granularity: str = Query("day", regex="^(day|hour)$", description="Grouping granularity"),
     model_name: Optional[str] = Query(None, description="Filter by model name"),
     module_name: Optional[str] = Query(None, description="Filter by module name"),
+    _admin=Depends(require_capability("read")),
 ):
     """
     Get tool usage trends over time.
@@ -332,7 +347,8 @@ async def get_tool_time_series(
         model_name: Filter by specific model
         module_name: Filter by specific module
     """
-    user_id = getattr(request.state, "user_id", None)
+    # Admin console view: aggregate across all users.
+    user_id = None
 
     time_series = await llm_usage_repository.get_tool_time_series(
         days=days,

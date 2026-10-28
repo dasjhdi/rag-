@@ -84,6 +84,17 @@ _LEADING_QUANTITY = re.compile(
     rf"^(?P<quantity>\d+(?:\.\d+)?(?:\s*\d+/\d+)?)\s*(?P<unit>{_UNIT_PATTERN})\s*(?P<name>.+)$",
     re.IGNORECASE,
 )
+# "大蒜 4 颗，拍散备用" / "蒜苗 2 根 切段备用"：数量夹在名称与做法说明之间。
+# 名称部分不允许出现数字，避免把 "B52 轰炸机" 这类名字误切。
+_MID_QUANTITY = re.compile(
+    rf"^(?P<name>[^\d]+?)\s*(?P<quantity>\d+(?:\.\d+)?(?:\s*\d+/\d+)?)\s*(?P<unit>{_UNIT_PATTERN})(?P<rest>.*)$",
+    re.IGNORECASE,
+)
+# rest 里若再出现 "数字 + 单位"，多半是同一行写了两种食材（"生抽 1 汤匙"），不能切。
+_QUANTITY_IN_REST = re.compile(
+    rf"\d+(?:\.\d+)?\s*(?:{_UNIT_PATTERN})",
+    re.IGNORECASE,
+)
 _LIST_MARKER = re.compile(r"^\s*(?:[-*+]|\d+[.)、])\s*")
 
 
@@ -203,6 +214,25 @@ def _parse_ingredient_line(line: str) -> Optional[ParsedIngredient]:
                 raw=raw,
                 scalable=quantity is not None,
             )
+
+    # 数量夹在中间的情况，做法说明跟在单位后面（可带标点）。
+    # 说明文字只保留在 raw 里，不并入名称，避免污染食材名与归一化。
+    mid = _MID_QUANTITY.match(raw)
+    if mid:
+        rest = (mid.group("rest") or "").strip()
+        if not rest or not _QUANTITY_IN_REST.search(rest):
+            quantity = _parse_number(mid.group("quantity"))
+            name = mid.group("name").strip(" ：:，,、")
+            unit = mid.group("unit").strip()
+            if name:
+                return ParsedIngredient(
+                    name=normalize_ingredient(name),
+                    raw_name=name,
+                    quantity=quantity,
+                    unit=unit,
+                    raw=raw,
+                    scalable=quantity is not None,
+                )
 
     # "盐 适量" / "食用油 少许"
     parts = re.split(r"\s+", raw, maxsplit=1)

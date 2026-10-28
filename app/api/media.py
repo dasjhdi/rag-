@@ -7,6 +7,7 @@ files and other corpus files are never reachable through this router.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import mimetypes
 import uuid
@@ -14,7 +15,7 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import unquote
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 from fastapi.responses import FileResponse
 from PIL import Image, ImageOps
 
@@ -129,3 +130,67 @@ def fetched_recipe_image(
 ) -> FileResponse:
     """Images fetched from public sources for corpus recipes that lack photos."""
     return _serve(_OVERRIDE_ROOT, image_path, w)
+
+
+# ---------------------------------------------------------------------------
+# Uploaded images (chat attachments / generated pictures) served from MinIO
+# ---------------------------------------------------------------------------
+_UPLOAD_CONTENT_TYPES = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+}
+
+
+def _fetch_upload_object(object_name: str) -> bytes:
+    """Read one object out of the private bucket (sync, called in a thread)."""
+    from minio import Minio
+
+    config = settings.image_storage
+    client = Minio(
+        config.minio_endpoint,
+        access_key=config.minio_access_key,
+        secret_key=config.minio_secret_key,
+        secure=config.minio_secure,
+    )
+    response = None
+    try:
+        response = client.get_object(config.minio_bucket, object_name)
+        return response.read()
+    finally:
+        if response is not None:
+            response.close()
+            response.release_conn()
+
+
+@router.get("/media/uploads/{object_name}")
+async def uploaded_image(object_name: str) -> Response:
+    """Serve a chat/generated image stored in MinIO.
+
+    The bucket stays private; this route is the only public surface. Object names
+    are flat (``YYYYMMDD_<uuid>.jpg``) and validated against a suffix whitelist.
+    """
+    config = settings.image_storage
+    if (config.provider or "minio").strip().lower() != "minio":
+        raise HTTPException(status_code=404, detail="图片不存在")
+
+    if not object_name or "/" in object_name or "\\" in object_name or ".." in object_name:
+        raise HTTPException(status_code=404, detail="图片不存在")
+
+    suffix = Path(object_name).suffix.lower()
+    content_type = _UPLOAD_CONTENT_TYPES.get(suffix)
+    if content_type is None:
+        raise HTTPException(status_code=404, detail="图片不存在")
+
+    try:
+        data = await asyncio.to_thread(_fetch_upload_object, object_name)
+    except Exception:
+        raise HTTPException(status_code=404, detail="图片不存在") from None
+
+    return Response(
+        content=data,
+        media_type=content_type,
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )

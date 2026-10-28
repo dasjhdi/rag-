@@ -32,6 +32,8 @@ class AuthService:
         self.refresh_days = settings.REFRESH_TOKEN_EXPIRE_DAYS
         self.max_failed_attempts = settings.LOGIN_MAX_FAILED_ATTEMPTS
         self.lockout_minutes = settings.LOGIN_LOCKOUT_MINUTES
+        # 动态码挑战的有效期（分钟）
+        self.totp_challenge_minutes = 5
         self._redis: Optional[Redis] = None
 
     def set_redis(self, redis_client: Redis) -> None:
@@ -118,6 +120,16 @@ class AuthService:
             result = await session.execute(stmt)
             return result.scalar_one_or_none()
 
+    async def get_user_by_id(self, user_id: str) -> Optional[UserModel]:
+        try:
+            async with get_session_context() as session:
+                stmt = select(UserModel).where(UserModel.id == user_id)
+                result = await session.execute(stmt)
+                return result.scalar_one_or_none()
+        except Exception as exc:  # malformed uuid is not a 500
+            logger.warning("Failed to load user %s: %s", user_id, exc)
+            return None
+
     # ------------------------------------------------------------------
     # Registration & authentication
     # ------------------------------------------------------------------
@@ -173,6 +185,7 @@ class AuthService:
         payload = {
             "sub": user.username,
             "uid": str(user.id),
+            "tv": int(getattr(user, "token_version", 0) or 0),
             "exp": expire,
             "typ": "access",
         }
@@ -184,6 +197,7 @@ class AuthService:
         payload = {
             "sub": user.username,
             "uid": str(user.id),
+            "tv": int(getattr(user, "token_version", 0) or 0),
             "exp": expire,
             "typ": "refresh",
         }
@@ -197,7 +211,12 @@ class AuthService:
             if payload.get("typ", "access") != "access":
                 logger.warning("Rejected non-access token at access endpoint")
                 return None
-            return {"username": payload.get("sub"), "user_id": payload.get("uid")}
+            return {
+                "username": payload.get("sub"),
+                "user_id": payload.get("uid"),
+                # 旧令牌没有 tv 字段，按 0 处理（与数据库默认值一致）
+                "tv": int(payload.get("tv") or 0),
+            }
         except Exception as exc:  # broad catch to avoid import of ExpiredSignatureError etc
             logger.warning("Failed to decode token: %s", exc)
             return None
@@ -209,9 +228,42 @@ class AuthService:
             if payload.get("typ") != "refresh":
                 logger.warning("Rejected non-refresh token at /auth/refresh")
                 return None
-            return {"username": payload.get("sub"), "user_id": payload.get("uid")}
+            return {
+                "username": payload.get("sub"),
+                "user_id": payload.get("uid"),
+                "tv": int(payload.get("tv") or 0),
+            }
         except Exception as exc:
             logger.warning("Failed to decode refresh token: %s", exc)
+            return None
+
+    # ------------------------------------------------------------------
+    # Two-factor challenge
+    # ------------------------------------------------------------------
+    def create_totp_challenge(self, user: UserModel) -> str:
+        """密码已通过、等待动态码时签发的短期凭证（5 分钟，不能当访问令牌用）。"""
+        expire = datetime.now() + timedelta(minutes=self.totp_challenge_minutes)
+        payload = {
+            "sub": user.username,
+            "uid": str(user.id),
+            "tv": int(getattr(user, "token_version", 0) or 0),
+            "exp": expire,
+            "typ": "totp",
+        }
+        return jwt.encode(payload, self.secret_key, algorithm=self.algorithm)
+
+    def decode_totp_challenge(self, token: str) -> Optional[dict]:
+        try:
+            payload = jwt.decode(token, self.secret_key, algorithms=[self.algorithm])
+            if payload.get("typ") != "totp":
+                return None
+            return {
+                "username": payload.get("sub"),
+                "user_id": payload.get("uid"),
+                "tv": int(payload.get("tv") or 0),
+            }
+        except Exception as exc:
+            logger.warning("Failed to decode totp challenge: %s", exc)
             return None
 
     # ------------------------------------------------------------------
@@ -219,6 +271,10 @@ class AuthService:
     # ------------------------------------------------------------------
     def _hash_password(self, password: str) -> str:
         return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+    def verify_password(self, password: str, hashed: str) -> bool:
+        """公开的密码校验入口，供双因子关闭等二次确认场景复用。"""
+        return self._verify_password(password, hashed)
 
     def _verify_password(self, password: str, hashed: str) -> bool:
         try:
