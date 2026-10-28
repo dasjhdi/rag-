@@ -5,7 +5,7 @@
  * 哪些入口与按钮，不作为安全边界。
  */
 
-import { apiGet, apiPost } from './client';
+import { apiDelete, apiGet, apiPost } from './client';
 
 export interface AdminWhoami {
   username: string;
@@ -148,6 +148,13 @@ export interface AdminAuditRow {
   target_type: string;
   target_id: string | null;
   detail: Record<string, unknown> | null;
+  /** 失败记录也会入库：success=false + error 说明被什么规则拦下 */
+  success: boolean;
+  error: string | null;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+  request_id: string | null;
+  user_agent: string | null;
   ip: string | null;
   created_at: string | null;
 }
@@ -205,10 +212,16 @@ export function getAdminSessionDetail(token: string, id: string): Promise<AdminS
 
 export function getAdminAudit(
   token: string,
-  options: { page?: number; pageSize?: number } = {}
+  options: { page?: number; pageSize?: number; success?: boolean; action?: string } = {}
 ): Promise<AdminAuditList> {
-  const { page = 1, pageSize = 20 } = options;
-  return apiGet<AdminAuditList>(`/admin/audit?page=${page}&page_size=${pageSize}`, token);
+  const { page = 1, pageSize = 20, success, action } = options;
+  const params = new URLSearchParams({
+    page: String(page),
+    page_size: String(pageSize),
+  });
+  if (success !== undefined) params.set('success', String(success));
+  if (action) params.set('action', action);
+  return apiGet<AdminAuditList>(`/admin/audit?${params.toString()}`, token);
 }
 
 export function setAdminUserStatus(
@@ -245,4 +258,91 @@ export function resetAdminUserPassword(
     { new_password: newPassword },
     token
   );
+}
+
+export interface DeleteUserResult {
+  id: string;
+  deleted: boolean;
+  counts: Record<string, number>;
+}
+
+/**
+ * 删除账号。
+ * force=false 时若名下有数据会返回 409（错误文案里带数据摘要）；
+ * 确认要连同数据一起删除时传 force=true。
+ */
+export function deleteAdminUser(
+  token: string,
+  userId: string,
+  force = false
+): Promise<DeleteUserResult> {
+  const suffix = force ? '?force=true' : '';
+  return apiDelete<DeleteUserResult>(`/admin/users/${userId}${suffix}`, token);
+}
+
+export interface CreateUserInput {
+  username: string;
+  password: string;
+  role: string;
+}
+
+export interface CreatedUser {
+  id: string;
+  username: string;
+  role: string;
+  is_active: boolean;
+}
+
+/** 超管直接创建账号（可指定初始角色），仅 user_create 能力可调用。 */
+export function createAdminUser(
+  token: string,
+  payload: CreateUserInput
+): Promise<CreatedUser> {
+  return apiPost<CreatedUser, CreateUserInput>('/admin/users', payload, token);
+}
+
+// ---------------------------------------------------------------------------
+// 告警
+// ---------------------------------------------------------------------------
+export interface AdminAlertEvent {
+  id: string;
+  kind: string;
+  severity: string;
+  title: string;
+  message: string;
+  metrics: Record<string, unknown> | null;
+  channel: string | null;
+  notified: boolean;
+  notify_error: string | null;
+  created_at: string | null;
+}
+
+export interface AdminAlertResponse {
+  items: AdminAlertEvent[];
+  config: {
+    enabled: boolean;
+    channel: string;
+    notify_ready: boolean;
+    interval_seconds: number;
+    cooldown_minutes: number;
+    thresholds: Record<string, number>;
+  };
+  last_run_at: string | null;
+  last_error: string | null;
+}
+
+export function getAdminAlerts(token: string, limit = 20): Promise<AdminAlertResponse> {
+  return apiGet<AdminAlertResponse>(`/admin/alerts?limit=${limit}`, token);
+}
+
+export function runAdminAlertCheck(
+  token: string
+): Promise<{ triggered: number; items: AdminAlertEvent[] }> {
+  return apiPost(`/admin/alerts/check`, {}, token);
+}
+
+export function sendAdminAlertTest(
+  token: string
+): Promise<{ notified: boolean; channel: string }> {
+  return apiPost<{ notified: boolean; channel: string }>('/admin/alerts/test', {}, token);
 }

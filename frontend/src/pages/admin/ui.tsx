@@ -8,17 +8,14 @@ import { X } from 'lucide-react';
 
 export const ROLE_LABELS: Record<string, string> = {
   super_admin: '超级管理员',
-  ops: '运营',
-  support: '客服',
-  viewer: '只读',
+  admin: '管理员',
   user: '普通用户',
 };
 
 export const ROLE_CLASSES: Record<string, string> = {
-  super_admin: 'bg-purple-100 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300',
-  ops: 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300',
-  support: 'bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300',
-  viewer: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
+  super_admin:
+    'bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300',
+  admin: 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300',
   user: 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400',
 };
 

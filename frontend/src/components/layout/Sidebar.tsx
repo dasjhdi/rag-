@@ -308,13 +308,11 @@ function SidebarHeader({
         <div className="px-4 pt-5 pb-4">
             <div className="flex items-center justify-between mb-5">
                 <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-9 h-9 rounded-2xl bg-white dark:bg-white/5 border border-cream-300/70 dark:border-white/10 flex items-center justify-center p-1.5 shadow-sm shrink-0">
-                        <img
-                            src="/logo1.png"
-                            alt="CookHero Logo"
-                            className="w-full h-full object-contain"
-                        />
-                    </div>
+                    <img
+                        src="/logo.svg"
+                        alt="CookHero Logo"
+                        className="w-10 h-10 shrink-0 drop-shadow-[0_6px_14px_rgba(226,96,44,0.35)]"
+                    />
                     <div className="min-w-0">
                         <div className="ch-wordmark text-[17px] leading-none text-ink-900 dark:text-cream-100">
                             CookHero

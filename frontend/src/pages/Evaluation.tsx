@@ -53,10 +53,10 @@ const METRIC_LABELS: Record<string, string> = {
   answer_relevancy: '答案相关性',
 };
 
-// Chart colors
+// Chart colors：沿用主应用的炭火橙 / 蜂蜜金，替换原先的默认蓝橙
 const CHART_COLORS = {
-  faithfulness: '#f97316', // orange-500
-  answer_relevancy: '#3b82f6', // blue-500
+  faithfulness: '#e2602c', // ember
+  answer_relevancy: '#d3a04c', // honey
 };
 
 /**
@@ -515,7 +515,11 @@ function HealthBadge({ health }: { health: EvaluationHealth | null }) {
 /**
  * Main evaluation page component
  */
-export default function EvaluationPage() {
+export default function EvaluationPage({
+  embedded = false,
+}: {
+  embedded?: boolean;
+}) {
   const { token } = useAuth();
 
   // State
@@ -608,8 +612,8 @@ export default function EvaluationPage() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 md:p-6">
-      <div className="max-w-6xl mx-auto">
+    <div className={embedded ? '' : 'flex-1 overflow-y-auto p-4 md:p-6'}>
+      <div className={embedded ? '' : 'max-w-6xl mx-auto'}>
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <div>

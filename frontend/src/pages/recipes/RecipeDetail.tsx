@@ -24,8 +24,31 @@ import { cleanRecipeText } from '../../utils/recipeText';
 import { resolveMediaUrl } from '../../utils';
 import { BackButton, RecipeImage } from '../../components/common';
 
-export default function RecipeDetailPage() {
-  const { id } = useParams<{ id: string }>();
+/**
+ * 热量数字的可信度标注：营养表只覆盖部分食材，覆盖率低时数字会明显偏低，
+ * 不标注会让用户误以为是全量食材的准确值。
+ */
+function NutritionCoverageCaption({
+  nutrition,
+}: {
+  nutrition?: { coverage?: number; confidence?: string } | null;
+}) {
+  if (!nutrition || nutrition.coverage == null || nutrition.coverage <= 0) {
+    return null;
+  }
+  const pct = Math.round(nutrition.coverage * 100);
+  if (pct >= 80) {
+    return <p className="mt-1 text-[11px] text-gray-400">已估算 {pct}% 食材 · 置信度高</p>;
+  }
+  if (pct >= 50) {
+    return <p className="mt-1 text-[11px] text-gray-400">已估算 {pct}% 食材 · 置信度中</p>;
+  }
+  return (
+    <p className="mt-1 text-[11px] text-amber-500">仅覆盖 {pct}% 食材，数值仅供参考</p>
+  );
+}
+
+export default function RecipeDetailPage() {  const { id } = useParams<{ id: string }>();
   const { token } = useAuth();
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [servings, setServings] = useState(2);
@@ -253,6 +276,11 @@ export default function RecipeDetailPage() {
                 +
               </button>
             </div>
+            {recipe.ingredients.length > 0 && !recipe.ingredients.some(i => i.scalable) && (
+              <p className="mt-1.5 text-[11px] leading-snug text-gray-400">
+                此菜谱未标注具体用量，调整份量不改变配料
+              </p>
+            )}
           </div>
           <div className="ch-card p-4">
             <div className="flex items-center gap-2 text-gray-500 text-xs">
@@ -271,6 +299,7 @@ export default function RecipeDetailPage() {
                 ? `${Math.round(recipe.nutrition?.totals?.calories ?? 0)} kcal`
                 : '热量未知'}
             </div>
+            <NutritionCoverageCaption nutrition={recipe.nutrition} />
           </div>
           <div className="ch-card p-4">
             <div className="text-gray-500 text-xs">单位制</div>

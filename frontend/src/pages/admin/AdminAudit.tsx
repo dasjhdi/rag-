@@ -1,13 +1,14 @@
 /**
  * Admin console · Audit tab
  *
- * 后台所有写操作的留痕：谁、何时、对谁、做了什么、改前改后、来源 IP。
+ * 后台所有写操作的留痕：谁、何时、对谁、做了什么、成功还是被拦截、
+ * 改前改后、请求号与来源。失败记录由中间件独立事务写入，不会随业务回滚丢失。
  * 仅 super_admin 可见（capability: audit）。
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { Download, Loader2, RefreshCcw, ScrollText } from 'lucide-react';
-import type { AdminAuditList } from '../../services/api/admin';
+import { AlertTriangle, CheckCircle2, Download, Loader2, RefreshCcw, ScrollText } from 'lucide-react';
+import type { AdminAuditList, AdminAuditRow } from '../../services/api/admin';
 import { getAdminAudit } from '../../services/api/admin';
 import { exportCsv, formatDate } from './ui';
 
@@ -18,25 +19,53 @@ const ACTION_LABELS: Record<string, string> = {
   'user.enable': '启用账号',
   'user.role': '修改角色',
   'user.reset_password': '重置密码',
+  'user.create': '创建账号',
+  'user.delete': '删除账号',
+  'user.status': '启停账号（失败）',
+  'alert.check': '手动巡检告警',
 };
+
+type ResultFilter = 'all' | 'success' | 'failure';
+
+/** 把 {a:1} 这类前后值压成一行，表格里不炸行高。 */
+function compactDiff(row: AdminAuditRow): string {
+  const before = row.before ?? (row.detail?.before as Record<string, unknown> | undefined);
+  const after = row.after ?? (row.detail?.after as Record<string, unknown> | undefined);
+  if (!before && !after) return '—';
+  const flatten = (value: unknown) =>
+    value && typeof value === 'object'
+      ? Object.entries(value as Record<string, unknown>)
+          .map(([key, val]) => `${key}=${String(val)}`)
+          .join(', ')
+      : String(value);
+  if (before && after) return `${flatten(before)} → ${flatten(after)}`;
+  return before ? `删除前：${flatten(before)}` : `新增：${flatten(after)}`;
+}
 
 export default function AdminAudit({ token }: { token: string }) {
   const [data, setData] = useState<AdminAuditList | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  const [result, setResult] = useState<ResultFilter>('all');
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      setData(await getAdminAudit(token, { page, pageSize: PAGE_SIZE }));
+      setData(
+        await getAdminAudit(token, {
+          page,
+          pageSize: PAGE_SIZE,
+          success: result === 'all' ? undefined : result === 'success',
+        })
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : '加载失败');
     } finally {
       setLoading(false);
     }
-  }, [token, page]);
+  }, [token, page, result]);
 
   useEffect(() => {
     load();
@@ -46,22 +75,42 @@ export default function AdminAudit({ token }: { token: string }) {
     if (!data) return;
     exportCsv(
       `cookhero-audit-${new Date().toISOString().slice(0, 10)}.csv`,
-      ['时间', '操作人', '动作', '对象', '变更前', '变更后', 'IP'],
+      ['时间', '操作人', '动作', '对象', '结果', '错误', '变更', '请求号', 'IP', 'User-Agent'],
       data.items.map((r) => [
         formatDate(r.created_at),
         r.actor_username,
         ACTION_LABELS[r.action] ?? r.action,
         String((r.detail as Record<string, unknown> | null)?.username ?? r.target_id ?? ''),
-        String((r.detail as Record<string, unknown> | null)?.before ?? ''),
-        String((r.detail as Record<string, unknown> | null)?.after ?? ''),
+        r.success ? '成功' : '失败',
+        r.error ?? '',
+        compactDiff(r),
+        r.request_id ?? '',
         r.ip ?? '',
+        r.user_agent ?? '',
       ])
     );
   };
 
+  const filterButton = (key: ResultFilter, label: string) => (
+    <button
+      key={key}
+      onClick={() => {
+        setResult(key);
+        setPage(1);
+      }}
+      className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${
+        result === key
+          ? 'bg-orange-500/15 border-orange-500/40 text-orange-300'
+          : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
+      }`}
+    >
+      {label}
+    </button>
+  );
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button
           onClick={load}
           className="p-2 rounded-lg text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800"
@@ -69,6 +118,11 @@ export default function AdminAudit({ token }: { token: string }) {
         >
           <RefreshCcw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
         </button>
+        <div className="flex items-center gap-1.5">
+          {filterButton('all', '全部')}
+          {filterButton('success', '成功')}
+          {filterButton('failure', '失败')}
+        </div>
         <button
           onClick={exportAudit}
           disabled={!data}
@@ -101,14 +155,16 @@ export default function AdminAudit({ token }: { token: string }) {
       ) : (
         <>
           <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/60">
-            <table className="w-full text-sm">
+            <table className="adm-table adm-table--wide w-full text-sm">
               <thead>
                 <tr className="text-left text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/60">
                   <th className="px-4 py-3 font-medium whitespace-nowrap">时间</th>
                   <th className="px-4 py-3 font-medium">操作人</th>
                   <th className="px-4 py-3 font-medium">动作</th>
                   <th className="px-4 py-3 font-medium">对象</th>
+                  <th className="px-4 py-3 font-medium">结果</th>
                   <th className="px-4 py-3 font-medium">变更</th>
+                  <th className="px-4 py-3 font-medium">请求号</th>
                   <th className="px-4 py-3 font-medium">IP</th>
                 </tr>
               </thead>
@@ -132,10 +188,34 @@ export default function AdminAudit({ token }: { token: string }) {
                       <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
                         {String(detail.username ?? r.target_id ?? '—')}
                       </td>
+                      <td className="px-4 py-3">
+                        {r.success ? (
+                          <span className="inline-flex items-center gap-1 text-green-600 dark:text-green-400">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            成功
+                          </span>
+                        ) : (
+                          <span
+                            className="inline-flex items-center gap-1 text-red-600 dark:text-red-400"
+                            title={r.error ?? ''}
+                          >
+                            <AlertTriangle className="w-3.5 h-3.5" />
+                            失败
+                          </span>
+                        )}
+                        {!r.success && r.error && (
+                          <div className="mt-1 max-w-[240px] truncate text-[11px] text-gray-500 dark:text-gray-400">
+                            {r.error}
+                          </div>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
-                        {'before' in detail || 'after' in detail
-                          ? `${String(detail.before ?? '—')} → ${String(detail.after ?? '—')}`
-                          : '—'}
+                        <span className="block max-w-[280px] truncate" title={compactDiff(r)}>
+                          {compactDiff(r)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 font-mono text-[11px] text-gray-400">
+                        {r.request_id ?? '—'}
                       </td>
                       <td className="px-4 py-3 text-gray-400 whitespace-nowrap">{r.ip ?? '—'}</td>
                     </tr>

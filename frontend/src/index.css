@@ -9,8 +9,8 @@
 @theme {
   --font-sans: "Inter", "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei",
     ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-display: "Iowan Old Style", "Palatino Linotype", Georgia,
-    "Songti SC", "Noto Serif SC", serif;
+  --font-display: "Inter", "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei",
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 
   /* --- 品牌主色：炭火橙 --- */
   --color-ember-50: #fdf5ef;
@@ -165,8 +165,8 @@ body {
   background-color: var(--color-cream-50);
   color: var(--color-ink-900);
   background-image:
-    radial-gradient(52rem 34rem at 92% -12%, rgba(242, 168, 125, 0.18), transparent 62%),
-    radial-gradient(44rem 30rem at -8% 108%, rgba(82, 121, 92, 0.1), transparent 60%);
+    radial-gradient(56rem 36rem at 92% -14%, rgba(242, 168, 125, 0.13), transparent 62%),
+    radial-gradient(46rem 32rem at -8% 108%, rgba(82, 121, 92, 0.07), transparent 60%);
   background-attachment: fixed;
 }
 
@@ -301,9 +301,9 @@ body {
   overflow: hidden;
   border-radius: 1.75rem;
   background:
-    radial-gradient(34rem 20rem at 88% -20%, rgba(226, 96, 44, 0.5), transparent 60%),
-    radial-gradient(28rem 18rem at 4% 120%, rgba(82, 121, 92, 0.35), transparent 60%),
-    linear-gradient(135deg, #241d17 0%, #1d1814 55%, #2a231c 100%);
+    radial-gradient(36rem 22rem at 88% -18%, rgba(226, 96, 44, 0.42), transparent 62%),
+    radial-gradient(28rem 18rem at 4% 120%, rgba(82, 121, 92, 0.3), transparent 62%),
+    linear-gradient(135deg, #221b15 0%, #1d1814 55%, #2a231c 100%);
   color: #f8f3ea;
   box-shadow: 0 24px 60px -28px rgba(29, 24, 20, 0.6);
 }
@@ -326,14 +326,16 @@ body {
 
 .ch-wordmark {
   font-family: var(--font-display);
-  letter-spacing: -0.02em;
-  font-weight: 600;
+  letter-spacing: -0.03em;
+  font-weight: 700;
 }
 
 .ch-display {
   font-family: var(--font-display);
-  letter-spacing: -0.025em;
-  line-height: 1.12;
+  letter-spacing: -0.03em;
+  line-height: 1.14;
+  font-weight: 700;
+  text-wrap: balance;
 }
 
 .ch-eyebrow {
@@ -352,8 +354,9 @@ body {
   font-size: 1.75rem;
   line-height: 1.2;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
   color: var(--color-ink-900);
+  text-wrap: balance;
 }
 
 .dark .ch-title {
@@ -786,5 +789,81 @@ input:-webkit-autofill:focus {
 @media (max-height: 620px) {
   .empty-state-hero {
     display: none;
+  }
+}
+
+/* =============================================================================
+   Landing page (public)
+   深色门面：影像推进、作品滚动带、滚动显现。全部在 prefers-reduced-motion 下降级。
+   ========================================================================== */
+
+@keyframes ch-kenburns {
+  from {
+    transform: scale(1.02);
+  }
+  to {
+    transform: scale(1.12);
+  }
+}
+
+@keyframes ch-marquee-left {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes ch-marquee-right {
+  from {
+    transform: translateX(-50%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.ch-kenburns {
+  animation: ch-kenburns 18s ease-out forwards;
+}
+
+.ch-marquee-left {
+  animation: ch-marquee-left 46s linear infinite;
+}
+
+.ch-marquee-right {
+  animation: ch-marquee-right 58s linear infinite;
+}
+
+.ch-marquee-mask {
+  mask-image: linear-gradient(90deg, transparent, black 6%, black 94%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, black 6%, black 94%, transparent);
+}
+
+.ch-reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 0.7s ease,
+    transform 0.7s cubic-bezier(0.22, 0.68, 0, 1);
+}
+
+.ch-reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ch-kenburns,
+  .ch-marquee-left,
+  .ch-marquee-right {
+    animation: none !important;
+  }
+
+  .ch-reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
   }
 }

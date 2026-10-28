@@ -2,14 +2,21 @@
  * Base API client with common utilities
  */
 
-import { API_BASE, STORAGE_KEYS } from '../../constants';
+import { API_BASE, COOKIE_SESSION_TOKEN, STORAGE_KEYS } from '../../constants';
 import { capitalize } from '../../utils';
+
+/**
+ * 真实 Bearer 令牌才拼 Authorization；Cookie 会话模式下不带该头。
+ */
+function isBearerToken(token?: string): token is string {
+  return Boolean(token) && token !== COOKIE_SESSION_TOKEN;
+}
 
 /**
  * Create authorization headers
  */
 export function createAuthHeaders(token?: string): HeadersInit | undefined {
-  return token ? { Authorization: `Bearer ${token}` } : undefined;
+  return isBearerToken(token) ? { Authorization: `Bearer ${token}` } : undefined;
 }
 
 /**
@@ -18,9 +25,12 @@ export function createAuthHeaders(token?: string): HeadersInit | undefined {
 export function createJsonHeaders(token?: string): HeadersInit {
   return {
     'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(isBearerToken(token) ? { Authorization: `Bearer ${token}` } : {}),
   };
 }
+
+/** 所有请求都带上 Cookie（同域部署下浏览器会自动附加会话）。 */
+const CREDENTIALS: RequestCredentials = 'include';
 
 /**
  * Custom error for 401 Unauthorized responses
@@ -29,6 +39,20 @@ export class UnauthorizedError extends Error {
   constructor(message: string = 'Unauthorized') {
     super(message);
     this.name = 'UnauthorizedError';
+  }
+}
+
+/**
+ * Error carrying the HTTP status, so callers can tell "no permission" (403)
+ * apart from "service unavailable" / network failures.
+ */
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
   }
 }
 
@@ -96,32 +120,30 @@ function friendlyMessageFor(msg: string, ctx?: Record<string, unknown>): string 
 
 /**
  * 单飞（single-flight）刷新：并发 401 只触发一次 /auth/refresh。
- * 刷新成功后写入 localStorage 并广播事件，AuthContext 据此更新内存中的 token。
+ * 浏览器场景直接用 HttpOnly 刷新 Cookie；若本地仍存有旧令牌则兼容带上。
  */
 let refreshPromise: Promise<string | null> | null = null;
 
 async function refreshAccessToken(): Promise<string | null> {
-  const refreshTokenValue = localStorage.getItem(STORAGE_KEYS.REFRESH);
-  if (!refreshTokenValue) return null;
+  const legacyRefresh = localStorage.getItem(STORAGE_KEYS.REFRESH);
 
   if (!refreshPromise) {
     refreshPromise = fetch(`${API_BASE}/auth/refresh`, {
       method: 'POST',
+      credentials: CREDENTIALS,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token: refreshTokenValue }),
+      body: JSON.stringify(
+        legacyRefresh ? { refresh_token: legacyRefresh } : {}
+      ),
     })
       .then(async (res) => {
         if (!res.ok) return null;
         const data = await res.json();
-        if (!data?.access_token) return null;
-        localStorage.setItem(STORAGE_KEYS.TOKEN, data.access_token);
-        if (data.refresh_token) {
-          localStorage.setItem(STORAGE_KEYS.REFRESH, data.refresh_token);
-        }
-        window.dispatchEvent(
-          new CustomEvent('auth:token-refreshed', { detail: data.access_token })
-        );
-        return data.access_token as string;
+        // Cookie 模式下服务端已写入新 Cookie，无需再保存任何东西
+        localStorage.removeItem(STORAGE_KEYS.TOKEN);
+        localStorage.removeItem(STORAGE_KEYS.REFRESH);
+        window.dispatchEvent(new Event('auth:token-refreshed'));
+        return (data?.access_token as string) || COOKIE_SESSION_TOKEN;
       })
       .catch(() => null)
       .finally(() => {
@@ -133,17 +155,21 @@ async function refreshAccessToken(): Promise<string | null> {
 }
 
 /**
- * 发起请求；遇到 401 时先尝试用刷新令牌续期并重试一次。
+ * 发起请求；遇到 401 时先尝试刷新会话并重试一次。
  */
-async function send(url: string, init: RequestInit, token?: string): Promise<Response> {
-  let response = await fetch(url, init);
+async function send(url: string, init: RequestInit): Promise<Response> {
+  const withCredentials: RequestInit = { ...init, credentials: CREDENTIALS };
+  let response = await fetch(url, withCredentials);
 
-  if (response.status === 401 && token) {
+  if (response.status === 401) {
     const fresh = await refreshAccessToken();
     if (fresh) {
+      // Cookie 已由刷新接口重写；若历史上拿到过 Bearer 令牌则一并带上
       const headers = new Headers(init.headers as HeadersInit | undefined);
-      headers.set('Authorization', `Bearer ${fresh}`);
-      response = await fetch(url, { ...init, headers });
+      if (fresh !== COOKIE_SESSION_TOKEN) {
+        headers.set('Authorization', `Bearer ${fresh}`);
+      }
+      response = await fetch(url, { ...init, headers, credentials: CREDENTIALS });
     }
   }
 
@@ -157,12 +183,11 @@ export async function apiGet<T>(endpoint: string, token?: string): Promise<T> {
   const response = await send(
     `${API_BASE}${endpoint}`,
     { headers: createAuthHeaders(token) },
-    token
   );
 
   if (!response.ok) {
     const msg = await parseErrorResponse(response);
-    throw new Error(msg || `HTTP error! status: ${response.status}`);
+    throw new ApiError(msg || `HTTP error! status: ${response.status}`, response.status);
   }
 
   return response.json();
@@ -183,12 +208,11 @@ export async function apiPost<T, D = unknown>(
       headers: createJsonHeaders(token),
       body: JSON.stringify(data),
     },
-    token
   );
 
   if (!response.ok) {
     const msg = await parseErrorResponse(response);
-    throw new Error(msg || `HTTP error! status: ${response.status}`);
+    throw new ApiError(msg || `HTTP error! status: ${response.status}`, response.status);
   }
 
   return response.json();
@@ -209,12 +233,11 @@ export async function apiPut<T, D = unknown>(
       headers: createJsonHeaders(token),
       body: JSON.stringify(data),
     },
-    token
   );
 
   if (!response.ok) {
     const msg = await parseErrorResponse(response);
-    throw new Error(msg || `HTTP error! status: ${response.status}`);
+    throw new ApiError(msg || `HTTP error! status: ${response.status}`, response.status);
   }
 
   return response.json();
@@ -235,12 +258,11 @@ export async function apiPatch<T, D = unknown>(
       headers: createJsonHeaders(token),
       body: JSON.stringify(data),
     },
-    token
   );
 
   if (!response.ok) {
     const msg = await parseErrorResponse(response);
-    throw new Error(msg || `HTTP error! status: ${response.status}`);
+    throw new ApiError(msg || `HTTP error! status: ${response.status}`, response.status);
   }
 
   return response.json();
@@ -253,12 +275,11 @@ export async function apiDelete<T>(endpoint: string, token?: string): Promise<T>
   const response = await send(
     `${API_BASE}${endpoint}`,
     { method: 'DELETE', headers: createAuthHeaders(token) },
-    token
   );
 
   if (!response.ok) {
     const msg = await parseErrorResponse(response);
-    throw new Error(msg || `HTTP error! status: ${response.status}`);
+    throw new ApiError(msg || `HTTP error! status: ${response.status}`, response.status);
   }
 
   return response.json();

@@ -1,0 +1,1546 @@
+/* =============================================================================
+   Admin Console — "Ember Control Deck"
+   与主展示界面同源的深色皮肤：近黑底 + 炭火橙/赤红主键 + 香草绿健康态。
+
+   设计要点
+   - 所有样式收在 `.adm-scope` 内，且全局规则挂在 `html.adm-root` 上，
+     即使这份 CSS 被打进共享 chunk，也不会影响主应用（奶油色）的观感。
+   - 既有后台页面（用户/用量/质量/模型/会话/审计）不改 className，
+     通过重映射 Tailwind 的 --color-* 变量统一换肤；工具类本身引用 var()，
+     因此 `dark:bg-gray-900` 会自动变成暖石墨而不是冷蓝。
+   - 视觉语言对齐主应用：1.25rem 圆角卡片、胶囊按钮、暖色细线、
+     炭火橙光晕与细点阵背景。
+   ========================================================================== */
+
+html.adm-root {
+  background-color: #0a0806;
+}
+
+html.adm-root body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: #0a0806;
+  background-image: none;
+  color: #f6efe4;
+}
+
+html.adm-root #root {
+  min-height: 100vh;
+}
+
+/* --- 控件外观归一化 ------------------------------------------------------
+   Tailwind preflight 会给 button 加上 appearance: button，Chromium 会因此用
+   系统按钮底面绘制，把自定义的 background-color 顶掉（只设 background-image
+   的渐变还能透出来）。这里在后台作用域内显式关掉原生外观。
+   ---------------------------------------------------------------------- */
+.adm-scope ::selection {
+  background: rgba(226, 96, 44, 0.32);
+  color: #fff8f1;
+}
+
+.adm-scope :focus-visible {
+  outline: 2px solid rgba(242, 168, 125, 0.5);
+  outline-offset: 2px;
+}
+
+.adm-scope button {
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.adm-scope button,
+.adm-scope a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* --- 调色板重映射：只在后台作用域内生效 -------------------------------- */
+.adm-scope {
+  /* 中性色：暖石墨（与主应用 cream / ink 体系同源） */
+  --color-gray-950: #0a0806;
+  --color-gray-900: #0f1011;
+  --color-gray-800: #191512;
+  --color-gray-700: #241d17;
+  --color-gray-600: #3a2f25;
+  --color-gray-500: #857568;
+  --color-gray-400: #a99a8b;
+  --color-gray-300: #bca992;
+  --color-gray-200: #dccdba;
+  --color-gray-100: #efe6d9;
+  --color-gray-50: #faf6ef;
+
+  /* slate / neutral 与 gray 走同一套暖中性色，避免遗漏别名 */
+  --color-slate-950: #0a0806;
+  --color-slate-900: #0f1011;
+  --color-slate-800: #191512;
+  --color-slate-700: #241d17;
+  --color-slate-600: #3a2f25;
+  --color-slate-500: #857568;
+  --color-slate-400: #a99a8b;
+  --color-slate-300: #bca992;
+  --color-slate-200: #dccdba;
+  --color-slate-100: #efe6d9;
+  --color-slate-50: #faf6ef;
+
+  /* 主色：炭火橙 → 深红，和主展示页同一支品牌色 */
+  --color-orange-50: #fdf5ef;
+  --color-orange-100: #fbe5d6;
+  --color-orange-200: #f7c9ab;
+  --color-orange-300: #f2a87d;
+  --color-orange-400: #ec8654;
+  --color-orange-500: #e2602c;
+  --color-orange-600: #c74e1f;
+  --color-orange-700: #a43d19;
+  --color-orange-800: #83321a;
+  --color-orange-900: #6b2b18;
+
+  /* 蓝 → 酒红：后台不再出现冷色信息蓝 */
+  --color-blue-50: #fbf2f4;
+  --color-blue-100: #f6e3e6;
+  --color-blue-200: #ecc7cc;
+  --color-blue-300: #dda6ad;
+  --color-blue-400: #c4838d;
+  --color-blue-500: #a8626f;
+  --color-blue-600: #8d4c58;
+  --color-blue-700: #743d47;
+  --color-blue-800: #5e333a;
+  --color-blue-900: #3f2228;
+
+  --color-indigo-300: #d3aeb6;
+  --color-indigo-400: #bd8f99;
+  --color-indigo-500: #9d6874;
+  --color-indigo-900: #2e1a1f;
+
+  /* 紫 / 品红：角色与模型区分，压成暖梅色 */
+  --color-violet-50: #f8eff2;
+  --color-violet-100: #f1dee4;
+  --color-violet-200: #e4c6cf;
+  --color-violet-300: #d3a9b6;
+  --color-violet-400: #bc8a9b;
+  --color-violet-500: #a06b7f;
+  --color-violet-600: #865465;
+  --color-violet-900: #33191f;
+
+  --color-purple-50: #f9eff2;
+  --color-purple-100: #f2dfe5;
+  --color-purple-200: #e6c8d1;
+  --color-purple-300: #d5aab8;
+  --color-purple-400: #bf8b9d;
+  --color-purple-500: #a46c81;
+  --color-purple-600: #8a5467;
+  --color-purple-900: #351a22;
+
+  /* 青绿 / 绿：健康态，改为香草鼠尾草（主应用 herb 色系） */
+  --color-teal-100: #e6efe6;
+  --color-teal-300: #bfd3bf;
+  --color-teal-400: #a2bfa2;
+  --color-teal-500: #86a886;
+  --color-teal-600: #6b8f6c;
+  --color-teal-900: #223026;
+
+  --color-emerald-50: #f2f7f1;
+  --color-emerald-100: #e2eee1;
+  --color-emerald-300: #c0d7bf;
+  --color-emerald-400: #a3c3a2;
+  --color-emerald-500: #86ac86;
+  --color-emerald-600: #6b916c;
+  --color-emerald-900: #233327;
+
+  --color-green-50: #f2f7f1;
+  --color-green-100: #e2eee1;
+  --color-green-300: #c0d7bf;
+  --color-green-400: #a3c3a2;
+  --color-green-500: #86ac86;
+  --color-green-600: #6b916c;
+  --color-green-900: #233327;
+
+  /* 危险态：暖赤，而不是荧光红 */
+  --color-red-50: #fdf0ee;
+  --color-red-100: #fadfd9;
+  --color-red-200: #f5c2b8;
+  --color-red-300: #eda393;
+  --color-red-400: #e38573;
+  --color-red-500: #d3654f;
+  --color-red-600: #b94f3a;
+  --color-red-700: #9a3f2e;
+  --color-red-900: #3f1a14;
+
+  --color-rose-100: #f8e4e2;
+  --color-rose-500: #d97a6f;
+  --color-rose-900: #401c1a;
+
+  /* 提示态：蜂蜜金 */
+  --color-amber-50: #fbf5e8;
+  --color-amber-100: #f6ead0;
+  --color-amber-200: #eed9a9;
+  --color-amber-300: #e2c078;
+  --color-amber-400: #d3a04c;
+  --color-amber-500: #b98432;
+  --color-amber-600: #9a6a25;
+  --color-amber-900: #563a1c;
+
+  --color-pink-50: #fceff1;
+  --color-pink-100: #f9e0e4;
+  --color-pink-500: #cd8a94;
+  --color-pink-900: #4a2027;
+}
+
+/* --- 外壳 ---------------------------------------------------------------- */
+.adm-shell {
+  --adm-void: #0a0806;
+  --adm-hair: rgba(255, 240, 228, 0.08);
+  --adm-hair-strong: rgba(255, 240, 228, 0.16);
+  --adm-text: #f6efe4;
+  --adm-text-dim: #a99a8b;
+  --adm-text-faint: #7d7066;
+  --adm-ember: #e2602c;
+  --adm-ember-soft: rgba(226, 96, 44, 0.13);
+  --adm-crimson: #d3452f;
+  --adm-ok: #86ac86;
+
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: 278px minmax(0, 1fr);
+  min-height: 100vh;
+  background-color: var(--adm-void);
+  color: var(--adm-text);
+  font-feature-settings: 'tnum' 1;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 氛围层：暖色光晕 + 细点阵，固定在视口，滚动时不移动 */
+.adm-atmo {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(58rem 34rem at 6% -14%, rgba(226, 96, 44, 0.22), transparent 62%),
+    radial-gradient(48rem 30rem at 94% 0%, rgba(176, 44, 30, 0.18), transparent 64%),
+    radial-gradient(70rem 26rem at 50% -16%, rgba(255, 240, 228, 0.05), transparent 70%),
+    linear-gradient(180deg, rgba(255, 240, 228, 0.02), transparent 34%);
+}
+
+.adm-atmo::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(255, 240, 228, 0.16) 1px, transparent 1px);
+  background-size: 26px 26px;
+  mask-image: radial-gradient(ellipse 130% 88% at 50% -10%, #000 14%, transparent 74%);
+  -webkit-mask-image: radial-gradient(ellipse 130% 88% at 50% -10%, #000 14%, transparent 74%);
+  opacity: 0.55;
+}
+
+/* --- 左侧功能栏 ---------------------------------------------------------- */
+.adm-sidebar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding: 20px 14px 14px;
+  border-right: 1px solid var(--adm-hair);
+  background:
+    linear-gradient(180deg, rgba(16, 14, 12, 0.96), rgba(8, 9, 10, 0.99));
+  backdrop-filter: blur(12px);
+}
+
+.adm-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 8px 0;
+}
+
+.adm-brand img {
+  width: 34px;
+  height: 34px;
+  filter: drop-shadow(0 6px 16px rgba(226, 96, 44, 0.35));
+}
+
+.adm-brand-name {
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: #fff;
+  line-height: 1.2;
+}
+
+.adm-brand-sub {
+  margin-top: 2px;
+  font-size: 9px;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: #857568;
+}
+
+.adm-sidebar-close {
+  display: none;
+  margin-left: auto;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 8px;
+  background-color: transparent;
+  color: var(--adm-text-dim);
+  border: 1px solid var(--adm-hair);
+}
+
+.adm-operator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 240, 228, 0.07);
+  background:
+    linear-gradient(135deg, rgba(226, 96, 44, 0.1), rgba(176, 44, 30, 0.06));
+}
+
+.adm-operator-avatar {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f1011;
+  background: linear-gradient(135deg, #f7c9ab, #e2602c);
+  box-shadow: 0 6px 18px -8px rgba(226, 96, 44, 0.9);
+}
+
+.adm-operator-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #fff;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adm-operator-role {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 3px;
+  font-size: 10.5px;
+  color: #b3a291;
+}
+
+.adm-operator-role span[data-dot] {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--adm-ok);
+  box-shadow: 0 0 8px rgba(134, 172, 134, 0.8);
+}
+
+.adm-nav-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin-top: 6px;
+  padding-right: 2px;
+}
+
+.adm-nav-group {
+  margin-top: 14px;
+}
+
+.adm-nav-group-label {
+  padding: 0 10px 6px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: #6b5e52;
+}
+
+.adm-nav {
+  position: relative;
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) 12px;
+  align-items: start;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 10px;
+  background-color: transparent;
+  text-align: left;
+  color: #a99a8b;
+  transition:
+    background-color 0.16s ease,
+    color 0.16s ease;
+}
+
+.adm-nav:hover {
+  background-color: rgba(255, 240, 228, 0.04);
+  color: #f0e8dc;
+}
+
+.adm-nav.is-active {
+  background:
+    linear-gradient(90deg, rgba(226, 96, 44, 0.18), rgba(226, 96, 44, 0.03) 58%, transparent);
+  color: #fff;
+}
+
+.adm-nav.is-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 9px;
+  bottom: 9px;
+  width: 2px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #f7c9ab, #e2602c);
+  box-shadow: 0 0 12px rgba(226, 96, 44, 0.85);
+}
+
+.adm-nav-icon {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin-top: 1px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 240, 228, 0.07);
+  background-color: rgba(255, 240, 228, 0.03);
+  color: #b3a291;
+}
+
+.adm-nav.is-active .adm-nav-icon {
+  color: #f2a87d;
+  border-color: rgba(226, 96, 44, 0.38);
+  background-color: rgba(226, 96, 44, 0.14);
+}
+
+.adm-nav-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.8px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.adm-nav-desc {
+  margin-top: 1px;
+  font-size: 10.8px;
+  line-height: 1.45;
+  color: #9c8d7e;
+}
+
+.adm-nav.is-active .adm-nav-desc {
+  color: #c0b1a1;
+}
+
+.adm-nav-chev {
+  margin-top: 5px;
+  color: #55493f;
+  opacity: 0;
+  transition: opacity 0.16s ease;
+}
+
+.adm-nav:hover .adm-nav-chev,
+.adm-nav.is-active .adm-nav-chev {
+  opacity: 1;
+}
+
+.adm-console-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px 2px;
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #6f6256;
+}
+
+.adm-sidebar-foot {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--adm-hair);
+}
+
+.adm-foot-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background-color: transparent;
+  font-size: 12px;
+  color: #a2937f;
+  transition:
+    background-color 0.16s ease,
+    color 0.16s ease;
+}
+
+.adm-foot-btn:hover {
+  background-color: rgba(255, 240, 228, 0.045);
+  color: #f8f3ea;
+}
+
+/* --- 主区 ---------------------------------------------------------------- */
+.adm-main {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.adm-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 20px 30px 16px;
+  border-bottom: 1px solid var(--adm-hair);
+  background: linear-gradient(180deg, rgba(8, 9, 10, 0.94), rgba(8, 9, 10, 0.76));
+  backdrop-filter: blur(16px) saturate(140%);
+}
+
+.adm-topbar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    rgba(226, 96, 44, 0.65),
+    rgba(211, 69, 47, 0.35) 32%,
+    transparent 62%
+  );
+  opacity: 0.55;
+}
+
+.adm-topbar-head {
+  min-width: 0;
+  flex: 1;
+}
+
+.adm-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: #9a8b7c;
+}
+
+.adm-eyebrow i {
+  font-style: normal;
+  color: #55493f;
+}
+
+.adm-title {
+  margin-top: 7px;
+  font-size: clamp(1.35rem, 2.1vw, 1.75rem);
+  font-weight: 700;
+  letter-spacing: -0.022em;
+  line-height: 1.14;
+  color: #fff;
+}
+
+.adm-subtitle {
+  margin-top: 6px;
+  max-width: 62ch;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: #a99a8b;
+}
+
+.adm-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  padding-top: 4px;
+}
+
+.adm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 27px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 240, 228, 0.09);
+  background-color: rgba(255, 240, 228, 0.035);
+  font-size: 10.8px;
+  letter-spacing: 0.02em;
+  color: #bfb0a0;
+  white-space: nowrap;
+}
+
+.adm-chip.is-accent {
+  color: #f2a87d;
+  border-color: rgba(226, 96, 44, 0.32);
+  background-color: rgba(226, 96, 44, 0.1);
+}
+
+.adm-pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--adm-ok);
+  box-shadow: 0 0 0 0 rgba(134, 172, 134, 0.55);
+  animation: adm-pulse 2.6s ease-out infinite;
+}
+
+@keyframes adm-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(134, 172, 134, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 7px rgba(134, 172, 134, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(134, 172, 134, 0);
+  }
+}
+
+.adm-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 240, 228, 0.1);
+  background-color: rgba(255, 240, 228, 0.04);
+  font-size: 12px;
+  font-weight: 500;
+  color: #f0e8dc;
+  white-space: nowrap;
+  transition:
+    background-color 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.16s ease;
+}
+
+.adm-btn:hover {
+  background-color: rgba(255, 240, 228, 0.075);
+  border-color: rgba(242, 168, 125, 0.32);
+}
+
+.adm-btn.is-primary {
+  border-color: transparent;
+  background-image: linear-gradient(135deg, #f18a55 0%, #e2602c 55%, #c74e1f 100%);
+  color: #fff8f1;
+  font-weight: 600;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    0 10px 24px -14px rgba(226, 96, 44, 0.75);
+}
+
+.adm-btn.is-primary:hover {
+  transform: translateY(-1px);
+  background-image: linear-gradient(135deg, #f2a87d 0%, #e2602c 55%, #c74e1f 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    0 16px 30px -14px rgba(226, 96, 44, 0.8);
+}
+
+.adm-icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 240, 228, 0.09);
+  background-color: rgba(255, 240, 228, 0.03);
+  color: #a99a8b;
+  transition:
+    color 0.16s ease,
+    border-color 0.16s ease,
+    background-color 0.16s ease;
+}
+
+.adm-icon-btn:hover {
+  color: #fff;
+  border-color: rgba(226, 96, 44, 0.35);
+  background-color: rgba(226, 96, 44, 0.1);
+}
+
+.adm-menu-btn {
+  display: none;
+  margin-top: 2px;
+}
+
+.adm-content {
+  flex: 1;
+  min-width: 0;
+  padding: 22px 30px 56px;
+}
+
+.adm-inner {
+  max-width: 1560px;
+  margin: 0 auto;
+}
+
+/* --- 总览 ---------------------------------------------------------------- */
+.adm-section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 26px 0 12px;
+}
+
+.adm-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: #f6efe4;
+}
+
+.adm-section-desc {
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: #9a8b7c;
+}
+
+.adm-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.adm-stat {
+  position: relative;
+  overflow: hidden;
+  padding: 17px 17px 15px;
+  border-radius: 1.25rem;
+  border: 1px solid rgba(255, 240, 228, 0.075);
+  background:
+    linear-gradient(180deg, rgba(255, 240, 228, 0.05), rgba(255, 240, 228, 0.012)),
+    #14100d;
+  box-shadow: inset 0 1px 0 rgba(255, 240, 228, 0.05);
+}
+
+.adm-stat::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 14px;
+  right: 14px;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    rgba(226, 96, 44, 0.6),
+    rgba(211, 69, 47, 0.32),
+    transparent
+  );
+  opacity: 0.6;
+}
+
+.adm-stat::after {
+  content: '';
+  position: absolute;
+  right: -30px;
+  top: -40px;
+  width: 110px;
+  height: 110px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(226, 96, 44, 0.16), transparent 68%);
+  pointer-events: none;
+}
+
+.adm-stat-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #a2937f;
+}
+
+.adm-stat-value {
+  margin-top: 7px;
+  font-size: clamp(1.55rem, 2.5vw, 1.95rem);
+  font-weight: 680;
+  letter-spacing: -0.025em;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.adm-stat-hint {
+  margin-top: 5px;
+  font-size: 10.5px;
+  color: #94867a;
+}
+
+.adm-overview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 330px;
+  gap: 18px;
+  align-items: start;
+  margin-top: 22px;
+}
+
+.adm-card {
+  position: relative;
+  padding: 18px;
+  border-radius: 1.25rem;
+  border: 1px solid rgba(255, 240, 228, 0.075);
+  background:
+    linear-gradient(180deg, rgba(255, 240, 228, 0.045), rgba(255, 240, 228, 0.01)),
+    #14100d;
+}
+
+.adm-card-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: #857568;
+}
+
+.adm-card + .adm-card {
+  margin-top: 14px;
+}
+
+.adm-mod-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(258px, 1fr));
+  gap: 12px;
+}
+
+.adm-mod {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 17px 17px 15px;
+  border-radius: 1.25rem;
+  border: 1px solid rgba(255, 240, 228, 0.07);
+  background:
+    linear-gradient(180deg, rgba(255, 240, 228, 0.045), rgba(255, 240, 228, 0.01)),
+    #14100d;
+  text-align: left;
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.adm-mod:hover {
+  transform: translateY(-2px);
+  border-color: rgba(226, 96, 44, 0.34);
+  box-shadow: 0 22px 46px -30px rgba(226, 96, 44, 0.75);
+}
+
+.adm-mod-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.adm-mod-index {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  color: #6b5e52;
+}
+
+.adm-mod-icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  border: 1px solid color-mix(in srgb, var(--mod-accent, #f2a87d) 26%, transparent);
+  background-color: color-mix(in srgb, var(--mod-accent, #f2a87d) 12%, transparent);
+  color: var(--mod-accent, #f2a87d);
+}
+
+.adm-mod-arrow {
+  margin-left: auto;
+  color: #5f544a;
+  transition:
+    color 0.18s ease,
+    transform 0.18s ease;
+}
+
+.adm-mod:hover .adm-mod-arrow {
+  color: #f2a87d;
+  transform: translate(2px, -2px);
+}
+
+.adm-mod-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #f8f3ea;
+}
+
+.adm-mod-desc {
+  font-size: 11px;
+  line-height: 1.55;
+  color: #a99a8b;
+}
+
+.adm-mod-need {
+  margin-top: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: #857568;
+}
+
+.adm-mod-need b {
+  font-weight: 600;
+  color: #e0b489;
+}
+
+.adm-kv {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px dashed rgba(255, 240, 228, 0.06);
+  font-size: 11.5px;
+}
+
+.adm-kv:last-child {
+  border-bottom: 0;
+}
+
+.adm-kv span {
+  color: #9a8b7c;
+}
+
+.adm-kv b {
+  font-weight: 600;
+  color: #eadfce;
+}
+
+.adm-cap-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.adm-cap {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(211, 69, 47, 0.2);
+  background-color: rgba(176, 44, 30, 0.08);
+  font-size: 10px;
+  color: #e6c39a;
+}
+
+.adm-volume {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  margin-top: 14px;
+  border: 1px solid rgba(255, 240, 228, 0.075);
+  border-radius: 1.25rem;
+  background:
+    linear-gradient(180deg, rgba(255, 240, 228, 0.04), rgba(255, 240, 228, 0.008)),
+    #14100d;
+  overflow: hidden;
+}
+
+.adm-volume-item {
+  padding: 14px 16px 15px;
+  border-right: 1px solid rgba(255, 240, 228, 0.06);
+}
+
+.adm-volume-item:last-child {
+  border-right: 0;
+}
+
+.adm-volume-value {
+  font-size: 1.3rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: #f6efe4;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+
+.adm-volume-label {
+  margin-top: 4px;
+  font-size: 10.5px;
+  color: #94867a;
+}
+
+@media (max-width: 1180px) {
+  .adm-volume {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .adm-volume-item:nth-child(3n) {
+    border-right: 0;
+  }
+
+  .adm-volume-item:nth-child(n + 4) {
+    border-top: 1px solid rgba(255, 240, 228, 0.06);
+  }
+}
+
+@media (max-width: 720px) {
+  .adm-volume {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .adm-volume-item:nth-child(3n) {
+    border-right: 1px solid rgba(255, 240, 228, 0.06);
+  }
+
+  .adm-volume-item:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .adm-volume-item:nth-child(n + 3) {
+    border-top: 1px solid rgba(255, 240, 228, 0.06);
+  }
+}
+
+/* --- 模块容器 ------------------------------------------------------------ */
+.adm-panel {
+  position: relative;
+  padding: 18px 20px 22px;
+  border-radius: 1.5rem;
+  border: 1px solid rgba(255, 240, 228, 0.075);
+  background:
+    linear-gradient(180deg, rgba(255, 240, 228, 0.04), rgba(255, 240, 228, 0.008)),
+    #0d0a08;
+  box-shadow:
+    0 34px 80px -56px #000,
+    inset 0 1px 0 rgba(255, 240, 228, 0.05);
+}
+
+.adm-panel::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 22px;
+  right: 22px;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(226, 96, 44, 0.5),
+    rgba(211, 69, 47, 0.32),
+    transparent
+  );
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* 面板内部的既有卡片再压一层，避免与外壳同色导致层级不清 */
+.adm-panel .dark\:bg-gray-900\/60 {
+  background-color: rgba(21, 18, 16, 0.72);
+}
+
+.adm-panel thead {
+  background-color: rgba(255, 240, 228, 0.028);
+}
+
+.adm-panel thead th {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: #a2937f;
+}
+
+.adm-scope input,
+.adm-scope select,
+.adm-scope textarea {
+  color-scheme: dark;
+}
+
+/* 窄屏时表格横向滚动，而不是把「角色 / 状态」压成竖排 */
+.adm-table {
+  min-width: 880px;
+}
+
+.adm-table--wide {
+  min-width: 1080px;
+}
+
+.adm-table th,
+.adm-table td {
+  white-space: nowrap;
+}
+
+/* 操作列吸附在右侧：窄屏横向滚动时仍可直接操作 */
+.adm-table--actions th:last-child,
+.adm-table--actions td:last-child {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  background-color: #12100d;
+  border-left: 1px solid rgba(255, 240, 228, 0.07);
+  box-shadow: -22px 0 26px -14px rgba(0, 0, 0, 0.98);
+}
+
+.adm-table--actions thead th:last-child {
+  background-color: #171412;
+}
+
+.adm-table--actions tbody tr:hover td:last-child {
+  background-color: #191512;
+}
+
+/* --- 权限门 / 加载 ------------------------------------------------------- */
+.adm-gate {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 24px;
+  background-color: #0a0806;
+  background-image:
+    radial-gradient(50rem 28rem at 18% -10%, rgba(226, 96, 44, 0.16), transparent 62%),
+    radial-gradient(40rem 26rem at 86% 6%, rgba(176, 44, 30, 0.1), transparent 64%);
+}
+
+.adm-gate::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image: radial-gradient(rgba(255, 240, 228, 0.16) 1px, transparent 1px);
+  background-size: 26px 26px;
+  mask-image: radial-gradient(ellipse 120% 90% at 50% 0%, #000 10%, transparent 72%);
+  -webkit-mask-image: radial-gradient(ellipse 120% 90% at 50% 0%, #000 10%, transparent 72%);
+  opacity: 0.8;
+}
+
+.adm-gate-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: #f6efe4;
+}
+
+.adm-gate-brand img {
+  width: 22px;
+  height: 22px;
+}
+
+.adm-gate-brand span {
+  font-weight: 500;
+  font-size: 9px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: #857568;
+}
+
+.adm-gate-card {
+  position: relative;
+  width: 100%;
+  max-width: 430px;
+  padding: 30px 28px 26px;
+  overflow: hidden;
+  border-radius: 1.5rem;
+  border: 1px solid rgba(255, 240, 228, 0.09);
+  background:
+    linear-gradient(180deg, rgba(255, 240, 228, 0.05), rgba(255, 240, 228, 0.012)),
+    #14100d;
+  box-shadow:
+    0 40px 90px -60px #000,
+    inset 0 1px 0 rgba(255, 240, 228, 0.06);
+  text-align: center;
+}
+
+.adm-gate-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 24px;
+  right: 24px;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(226, 96, 44, 0.6),
+    rgba(211, 69, 47, 0.35),
+    transparent
+  );
+}
+
+.adm-gate-icon {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  margin: 0 auto;
+  border-radius: 14px;
+  border: 1px solid rgba(226, 96, 44, 0.3);
+  background-color: rgba(226, 96, 44, 0.12);
+  color: #f2a87d;
+}
+
+.adm-gate-title {
+  margin-top: 16px;
+  font-size: 17px;
+  font-weight: 650;
+  color: #fff;
+}
+
+.adm-gate-text {
+  margin-top: 8px;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: #a99a8b;
+}
+
+.adm-gate-meta {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #857568;
+}
+
+.adm-gate-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.adm-loading {
+  display: grid;
+  place-items: center;
+  gap: 10px;
+  min-height: 60vh;
+  font-size: 12px;
+  color: #a99a8b;
+}
+
+.adm-spin {
+  animation: adm-spin 1s linear infinite;
+}
+
+@keyframes adm-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.adm-scrim {
+  display: none;
+}
+
+/* --- 后台专用登录 -------------------------------------------------------- */
+.adm-login-card {
+  text-align: left;
+}
+
+.adm-login-card .adm-gate-icon {
+  margin: 0 0 14px;
+}
+
+.adm-login-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.adm-field {
+  display: grid;
+  gap: 6px;
+}
+
+.adm-field > span {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #94867a;
+}
+
+.adm-input {
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(255, 240, 228, 0.1);
+  background-color: rgba(255, 240, 228, 0.04);
+  color: #f3ece1;
+  font-size: 13px;
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    background-color 0.16s ease;
+}
+
+.adm-input::placeholder {
+  color: #6b5e52;
+}
+
+.adm-input:focus {
+  outline: none;
+  border-color: rgba(226, 96, 44, 0.55);
+  box-shadow: 0 0 0 3px rgba(226, 96, 44, 0.15);
+  background-color: rgba(255, 240, 228, 0.06);
+}
+
+.adm-login-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(211, 101, 79, 0.3);
+  background-color: rgba(211, 101, 79, 0.1);
+  color: #f0a092;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.adm-login-error svg {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.adm-login-submit {
+  width: 100%;
+  height: 38px;
+  justify-content: center;
+  margin-top: 2px;
+}
+
+.adm-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.adm-login-back {
+  display: block;
+  margin-top: 16px;
+  text-align: center;
+  font-size: 11.5px;
+  color: #9a8b7c;
+}
+
+.adm-login-back:hover {
+  color: #f6efe4;
+}
+
+/* --- 响应式 -------------------------------------------------------------- */
+@media (max-width: 1360px) {
+  .adm-stat-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1180px) {
+  .adm-overview-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 1023px) {
+  .adm-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .adm-sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 286px;
+    height: 100%;
+    transform: translateX(-104%);
+    transition: transform 0.26s cubic-bezier(0.22, 0.68, 0, 1);
+    box-shadow: 40px 0 90px -40px #000;
+  }
+
+  .adm-sidebar.is-open {
+    transform: none;
+  }
+
+  .adm-sidebar-close {
+    display: grid;
+  }
+
+  .adm-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 25;
+    background-color: rgba(4, 5, 6, 0.62);
+    backdrop-filter: blur(2px);
+  }
+
+  .adm-menu-btn {
+    display: inline-grid;
+  }
+
+  .adm-topbar {
+    padding: 16px 18px 14px;
+    gap: 10px;
+  }
+
+  .adm-content {
+    padding: 16px 16px 40px;
+  }
+
+  .adm-topbar-actions .adm-btn {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  /* 窄屏优先保证标题可读：能力徽章让位给标题与刷新按钮 */
+  .adm-topbar-actions .adm-chip {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .adm-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .adm-mod-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .adm-title {
+    font-size: 1.22rem;
+  }
+
+  .adm-subtitle {
+    font-size: 11.5px;
+  }
+
+  .adm-panel {
+    padding: 14px 12px 18px;
+    border-radius: 1.25rem;
+  }
+
+  .adm-section-head .adm-chip {
+    display: none;
+  }
+
+  .adm-topbar-actions {
+    gap: 6px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .adm-pulse,
+  .adm-spin {
+    animation: none !important;
+  }
+
+  .adm-mod:hover {
+    transform: none;
+  }
+
+  .adm-sidebar {
+    transition: none;
+  }
+}
+
+/* =============================================================================
+   图表适配（Recharts）
+   Evaluation / LLMStats 是主应用与后台共用的页面，内部硬编码了浅色网格与
+   白色 tooltip。这里用作用域更窄的 CSS 覆盖 presentation 属性与内联样式，
+   保证后台的红黑底上不会出现一条亮灰色网格线。
+   ========================================================================== */
+
+.adm-scope .recharts-cartesian-grid line {
+  stroke: rgba(255, 240, 228, 0.1);
+}
+
+.adm-scope .recharts-cartesian-axis-line,
+.adm-scope .recharts-cartesian-axis-tick-line {
+  stroke: rgba(255, 240, 228, 0.14);
+}
+
+.adm-scope .recharts-cartesian-axis-tick-value {
+  fill: #857568;
+}
+
+.adm-scope .recharts-legend-item-text {
+  color: #a99a8b !important;
+}
+
+.adm-scope .recharts-default-tooltip {
+  border: 1px solid rgba(255, 240, 228, 0.14) !important;
+  border-radius: 0.9rem !important;
+  background-color: rgba(20, 17, 15, 0.96) !important;
+  box-shadow:
+    0 24px 48px -28px #000,
+    inset 0 1px 0 rgba(255, 240, 228, 0.06);
+  color: #f0e8dc !important;
+  font-size: 12px;
+}
+
+.adm-scope .recharts-default-tooltip .recharts-tooltip-label {
+  color: #f6efe4 !important;
+  font-weight: 600;
+}
+
+.adm-scope .recharts-default-tooltip .recharts-tooltip-item {
+  color: #c0b1a1 !important;
+}
+
+.adm-scope .recharts-pie-label-text {
+  fill: #a99a8b;
+  font-size: 11px;
+}
+
+/* 图表卡片沿用主应用的暖色卡片底色 */
+.adm-scope .recharts-responsive-container {
+  color: #a99a8b;
+}
+
+/* 环形指标卡的浅灰轨道与柱状图 hover 光标 */
+.adm-scope .recharts-radial-bar-background-sector {
+  fill: rgba(255, 240, 228, 0.08);
+}
+
+.adm-scope .recharts-tooltip-cursor {
+  fill: rgba(255, 240, 228, 0.05);
+  stroke: rgba(255, 240, 228, 0.12);
+}

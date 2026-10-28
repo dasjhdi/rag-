@@ -20,5 +20,31 @@ export default defineConfig({
         changeOrigin: true,
       },
     }
-  }
+  },
+  build: {
+    rollupOptions: {
+      // 双入口：主应用（index.html）与独立后台（admin.html）。
+      // 后台单独打一份产物，打开 /admin.html 时不会加载主应用的聊天与落地页代码。
+      input: {
+        main: 'index.html',
+        admin: 'admin.html',
+      },
+    },
+  },
+  // 生产构建的同源预览：`npm run preview` 后在前端端口上同时提供
+  // 静态资源与 /api、/media 代理，行为和线上网关（Caddy/Nginx）一致，
+  // 便于在没有反向代理的环境里验证 Cookie 会话链路。
+  preview: {
+    port: 4173,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/media': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+    },
+  },
 })

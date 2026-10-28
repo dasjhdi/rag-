@@ -1,15 +1,14 @@
 // src/App.tsx
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import type { ReactElement } from 'react';
-import { BarChart3, BookOpen, Menu, LogOut, Settings, Utensils, ChevronDown } from 'lucide-react';
+import { BookOpen, Loader2, Menu, LogOut, Settings, Utensils } from 'lucide-react';
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ChatWindow, ChatInput, Sidebar, KnowledgePanel } from './components';
 import { AgentChatWindow, AgentChatInput } from './components/agent';
 import { useTheme, useAuth, useConversationContext, useAgentContext } from './contexts';
+import LandingPage from './pages/Landing';
 import LoginPage from './pages/Login';
 import RegisterPage from './pages/Register';
-import EvaluationPage from './pages/Evaluation';
-import LLMStatsPage from './pages/LLMStats';
 import DietManagementPage from './pages/diet/DietManagement';
 import DietProfilePage from './pages/diet/DietProfile';
 import PantryPage from './pages/diet/Pantry';
@@ -17,8 +16,14 @@ import RecipeSearchPage from './pages/recipes/RecipeSearch';
 import RecipeLibraryPage from './pages/recipes/RecipeLibrary';
 import RecipeDetailPage from './pages/recipes/RecipeDetail';
 import CookingModePage from './pages/recipes/CookingMode';
-import AdminConsolePage from './pages/admin/AdminConsole';
 import { getAdminWhoami } from './services/api/admin';
+
+/**
+ * Agent 会话 ID 是 UUID。不是这个形状的路径段（例如手写 /agent/admin）
+ * 不必发一次注定 404 的请求，可直接复位到新会话。
+ */
+const AGENT_SESSION_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Chat view component - handles both new chat and existing conversation
@@ -72,11 +77,26 @@ function ChatView() {
   useEffect(() => {
     // Only sync from URL to state, not the other way around
     if (urlConversationId && urlConversationId !== currentId) {
-        if (isAgentMode) {
-            agentSelectSession(urlConversationId);
-        } else {
-            chatSelectConversation(urlConversationId);
+      if (isAgentMode) {
+        if (!AGENT_SESSION_ID_PATTERN.test(urlConversationId)) {
+          navigate('/agent', { replace: true });
+          initialSyncDone.current = true;
+          return;
         }
+        // 会话不存在 / 已被删除 / 不属于当前账号时，复位到干净的新会话，
+        // 而不是把 "Session not found" 这种后端原文留在页面上。
+        let cancelled = false;
+        void agentSelectSession(urlConversationId).then((result) => {
+          if (!cancelled && result === 'missing') {
+            navigate('/agent', { replace: true });
+          }
+        });
+        initialSyncDone.current = true;
+        return () => {
+          cancelled = true;
+        };
+      }
+      chatSelectConversation(urlConversationId);
     }
     initialSyncDone.current = true;
   }, [urlConversationId, isAgentMode]); // Only depend on URL changes
@@ -171,6 +191,26 @@ function ChatView() {
 }
 
 /**
+ * 后台已拆成独立入口（admin.html），主应用只保留一次跳转：
+ * 这样旧书签、/evaluation 等历史重定向与 ?tab= 参数继续可用，
+ * 同时后台的代码不会被打进主应用首屏。
+ */
+function AdminRedirect() {
+  const location = useLocation();
+
+  useEffect(() => {
+    window.location.replace(`/admin.html${location.search}`);
+  }, [location.search]);
+
+  return (
+    <div className="flex min-h-[60vh] items-center justify-center gap-2 text-sm text-ink-500 dark:text-ink-300">
+      <Loader2 className="h-4 w-4 animate-spin" />
+      正在进入管理控制台…
+    </div>
+  );
+}
+
+/**
  * Main layout component with sidebar
  */
 function MainLayout({ children }: { children: React.ReactNode }) {
@@ -253,20 +293,14 @@ function MainLayout({ children }: { children: React.ReactNode }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(
     () => typeof window === 'undefined' || window.innerWidth >= 768
   );
-  const [isAnalyticsMenuOpen, setIsAnalyticsMenuOpen] = useState(false);
-  const analyticsMenuRef = useRef<HTMLDivElement>(null);
 
   // Determine current view from pathname
   const isKnowledgeView = location.pathname.includes('/knowledge');
-  const isEvaluationView = location.pathname.includes('/evaluation');
-  const isLLMStatsView = location.pathname.includes('/llm-stats');
   const isAdminView = location.pathname.startsWith('/admin');
   const isDietView = location.pathname.includes('/diet');
   const isDietSubView = /\/diet\/(profile|pantry)/.test(location.pathname);
   const isRecipeView = location.pathname.startsWith('/recipes');
   const isRecipeLibraryView = location.pathname.includes('/recipes/library');
-  const isAnalyticsView = isEvaluationView || isLLMStatsView;
-  const analyticsLabel = isEvaluationView ? '评估监控' : isLLMStatsView ? '模型统计' : '数据分析';
   const sectionLabel = isRecipeLibraryView
     ? '菜谱图鉴'
     : isRecipeView
@@ -277,13 +311,9 @@ function MainLayout({ children }: { children: React.ReactNode }) {
           ? '饮食管理'
           : isKnowledgeView
             ? '知识库'
-            : isEvaluationView
-              ? '评估监控'
-              : isLLMStatsView
-                ? '模型统计'
-                : isAgentMode
-                  ? 'Agent 工作台'
-                  : '对话';
+            : isAgentMode
+              ? 'Agent 工作台'
+              : '对话';
 
   // Breadcrumb trail derived from the current path. The last crumb is the
   // current page (not clickable); earlier crumbs link to their parent.
@@ -303,40 +333,11 @@ function MainLayout({ children }: { children: React.ReactNode }) {
       else result.push({ label: '菜谱搜索' });
     } else if (isKnowledgeView) {
       result.push({ label: '知识库' });
-    } else if (isEvaluationView) {
-      result.push({ label: '数据分析' });
-      result.push({ label: '评估监控' });
-    } else if (isLLMStatsView) {
-      result.push({ label: '数据分析' });
-      result.push({ label: '模型统计' });
     } else {
       result.push({ label: sectionLabel });
     }
     return result;
-  }, [location.pathname, isDietView, isRecipeView, isRecipeLibraryView, isKnowledgeView, isEvaluationView, isLLMStatsView, isAdminView, isAgentMode, sectionLabel]);
-
-  useEffect(() => {
-    setIsAnalyticsMenuOpen(false);
-  }, [location.pathname]);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (analyticsMenuRef.current && !analyticsMenuRef.current.contains(event.target as Node)) {
-        setIsAnalyticsMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const goBackToChat = useCallback(() => {
-    const basePath = isAgentMode ? '/agent' : '/chat';
-    if (conversationId && !conversationId.startsWith('temp-')) {
-      navigate(`${basePath}/${conversationId}`);
-    } else {
-      navigate(basePath);
-    }
-  }, [conversationId, isAgentMode, navigate]);
+  }, [location.pathname, isDietView, isRecipeView, isRecipeLibraryView, isKnowledgeView, isAdminView, isAgentMode, sectionLabel]);
 
   const handleToggleAgentMode = useCallback(() => {
       if (isAgentMode) {
@@ -399,7 +400,7 @@ function MainLayout({ children }: { children: React.ReactNode }) {
               <Menu className="w-5 h-5" />
             </button>
             <div className="hidden sm:flex items-center gap-2.5 min-w-0">
-              <img src="/logo1.png" alt="" className="w-7 h-7 object-contain" />
+              <img src="/logo.svg" alt="" className="w-8 h-8 drop-shadow-[0_4px_10px_rgba(226,96,44,0.3)]" />
               <span className="ch-wordmark text-[13px] text-ink-400 dark:text-ink-400">
                 CookHero
               </span>
@@ -422,14 +423,14 @@ function MainLayout({ children }: { children: React.ReactNode }) {
               ))}
             </div>
             <div className="flex sm:hidden items-center gap-2 min-w-0">
-              <img src="/logo1.png" alt="" className="w-6 h-6 object-contain" />
+              <img src="/logo.svg" alt="" className="w-7 h-7 drop-shadow-[0_4px_10px_rgba(226,96,44,0.3)]" />
               <span className="text-sm font-medium text-ink-900 dark:text-cream-100 truncate">
                 {crumbs[crumbs.length - 1]?.label ?? sectionLabel}
               </span>
             </div>
           </div>
           <div className="flex items-center gap-1 sm:gap-1.5 text-xs text-ink-600 dark:text-ink-200 overflow-visible">
-            {!isKnowledgeView && !isEvaluationView && !isLLMStatsView && !isDietView && conversationId && (
+            {!isKnowledgeView && !isDietView && conversationId && (
               <span className="hidden lg:inline font-mono text-[10px] text-ink-400 bg-white/50 dark:bg-white/5 border border-cream-300/50 dark:border-white/10 px-2 py-1 rounded-full truncate max-w-[140px]" title={conversationId}>
                 {conversationId.slice(0, 8)}
               </span>
@@ -476,63 +477,9 @@ function MainLayout({ children }: { children: React.ReactNode }) {
               <BookOpen className="w-4 h-4" />
               <span className="hidden sm:inline">{isKnowledgeView ? '返回对话' : '知识库'}</span>
             </button>
-            <div ref={analyticsMenuRef} className="relative">
-              <button
-                onClick={() => setIsAnalyticsMenuOpen(prev => !prev)}
-                className={`ch-nav-pill ${isAnalyticsView ? 'ch-nav-pill-active' : ''}`}
-              >
-                <BarChart3 className="w-4 h-4" />
-                <span className="hidden sm:inline">{analyticsLabel}</span>
-                <ChevronDown className="w-3.5 h-3.5 opacity-60 hidden sm:block" />
-              </button>
-              {isAnalyticsMenuOpen && (
-                <div className="absolute right-0 mt-2 w-44 ch-card !rounded-2xl overflow-hidden z-50 py-1.5">
-                  {isAnalyticsView && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIsAnalyticsMenuOpen(false);
-                        goBackToChat();
-                      }}
-                      className="w-full text-left px-4 py-2.5 text-sm text-ink-600 dark:text-ink-200 hover:bg-cream-100 dark:hover:bg-white/5 border-b border-cream-200/70 dark:border-white/5 transition-colors flex items-center gap-2"
-                    >
-                      返回对话
-                    </button>
-                  )}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setIsAnalyticsMenuOpen(false);
-                      navigate(isAgentMode ? '/agent/evaluation' : '/evaluation');
-                    }}
-                    className={`w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center gap-2.5 ${
-                      isEvaluationView
-                        ? 'text-ember-600 dark:text-ember-300 font-medium bg-ember-50/70 dark:bg-ember-500/10'
-                        : 'text-ink-700 dark:text-ink-200 hover:bg-cream-100 dark:hover:bg-white/5'
-                    }`}
-                  >
-                    评估监控
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setIsAnalyticsMenuOpen(false);
-                      navigate(isAgentMode ? '/agent/llm-stats' : '/llm-stats');
-                    }}
-                    className={`w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center gap-2.5 ${
-                      isLLMStatsView
-                        ? 'text-ember-600 dark:text-ember-300 font-medium bg-ember-50/70 dark:bg-ember-500/10'
-                        : 'text-ink-700 dark:text-ink-200 hover:bg-cream-100 dark:hover:bg-white/5'
-                    }`}
-                  >
-                    模型统计
-                  </button>
-                </div>
-              )}
-            </div>
             {isAdmin && (
               <button
-                onClick={() => navigate('/admin')}
+                onClick={() => window.location.assign('/admin.html')}
                 className={`ch-nav-pill ${isAdminView ? 'ch-nav-pill-active' : ''}`}
                 title="管理后台"
               >
@@ -571,7 +518,7 @@ function MainLayout({ children }: { children: React.ReactNode }) {
 }
 
 function RequireAuth({ children }: { children: ReactElement }) {
-  const { isAuthenticated, logout } = useAuth();
+  const { isAuthenticated, isReady, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -585,6 +532,15 @@ function RequireAuth({ children }: { children: ReactElement }) {
     window.addEventListener('auth-unauthorized', handleUnauthorized);
     return () => window.removeEventListener('auth-unauthorized', handleUnauthorized);
   }, [logout, navigate]);
+
+  // 会话探测完成前不要重定向，否则刷新页面会闪一下登录页
+  if (!isReady) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-cream-50 dark:bg-[#12100c]">
+        <Loader2 className="w-6 h-6 animate-spin text-ember-500" />
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
@@ -637,56 +593,14 @@ function App() {
           </RequireAuth>
         }
       />
-      <Route
-        path="/evaluation"
-        element={
-          <RequireAuth>
-            <MainLayout>
-              <EvaluationPage />
-            </MainLayout>
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/agent/evaluation"
-        element={
-          <RequireAuth>
-            <MainLayout>
-              <EvaluationPage />
-            </MainLayout>
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/llm-stats"
-        element={
-          <RequireAuth>
-            <MainLayout>
-              <LLMStatsPage />
-            </MainLayout>
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/agent/llm-stats"
-        element={
-          <RequireAuth>
-            <MainLayout>
-              <LLMStatsPage />
-            </MainLayout>
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/admin"
-        element={
-          <RequireAuth>
-            <MainLayout>
-              <AdminConsolePage />
-            </MainLayout>
-          </RequireAuth>
-        }
-      />
+      {/* 旧的运营页入口：已并入管理后台，保留链接兼容 */}
+      <Route path="/evaluation" element={<Navigate to="/admin?tab=quality" replace />} />
+      <Route path="/agent/evaluation" element={<Navigate to="/admin?tab=quality" replace />} />
+      <Route path="/llm-stats" element={<Navigate to="/admin?tab=calls" replace />} />
+      <Route path="/agent/llm-stats" element={<Navigate to="/admin?tab=calls" replace />} />
+      {/* 命名空间碰撞：手写 /agent/admin 时进入真正的后台，而不是被当成会话 ID */}
+      <Route path="/agent/admin" element={<Navigate to="/admin" replace />} />
+      <Route path="/admin" element={<AdminRedirect />} />
       <Route
         path="/diet"
         element={
@@ -830,8 +744,8 @@ function App() {
       {/* Auth routes */}
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
-      {/* Default redirect to agent */}
-      <Route path="/" element={<Navigate to="/agent" replace />} />
+      {/* 公开门面页：未登录也能访问，CTA 自行分流到 /agent 或 /login */}
+      <Route path="/" element={<LandingPage />} />
       <Route path="*" element={<Navigate to="/agent" replace />} />
     </Routes>
   );

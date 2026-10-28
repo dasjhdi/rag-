@@ -2,14 +2,17 @@
  * Admin console · Users tab
  *
  * 用户目录 + 账号管理。写操作按能力显示：
- * user_status（启停）、user_password（重置密码）、user_role（改角色）。
+ * user_status（启停）、user_password:self_tier / :all（重置密码）、user_role（改角色）。
+ * 非超管只能操作级别低于自己的账号，与后端 _can_manage_account 规则一致。
  * 每次写操作成功后刷新列表，并给出提示。
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { Download, Loader2, RefreshCcw, Search, ShieldAlert, Users } from 'lucide-react';
+import { Download, Loader2, RefreshCcw, Search, ShieldAlert, UserPlus, Users } from 'lucide-react';
 import type { AdminUserList, AdminUserRow } from '../../services/api/admin';
 import {
+  createAdminUser,
+  deleteAdminUser,
   getAdminUsers,
   resetAdminUserPassword,
   setAdminUserRole,
@@ -18,16 +21,30 @@ import {
 import { Modal, ROLE_CLASSES, ROLE_LABELS, exportCsv, formatDate } from './ui';
 
 const PAGE_SIZE = 20;
-const ROLE_OPTIONS = ['user', 'viewer', 'support', 'ops', 'super_admin'];
+const ROLE_OPTIONS = ['user', 'admin', 'super_admin'];
+
+const ROLE_RANK: Record<string, number> = {
+  user: 0,
+  admin: 1,
+  super_admin: 2,
+};
 
 export default function AdminUsers({
   token,
   capabilities,
+  myRole,
 }: {
   token: string;
   capabilities: string[];
+  myRole?: string;
 }) {
   const can = (c: string) => capabilities.includes(c);
+  // 重置密码：超管持 :all 不受限；管理员持 :self_tier 只能动普通用户
+  const canResetPassword = can('user_password:all') || can('user_password:self_tier');
+  const canManageRow = (targetRole: string) => {
+    if (can('user_password:all') || myRole === 'super_admin') return true;
+    return (ROLE_RANK[targetRole] ?? 0) < (ROLE_RANK[myRole ?? ''] ?? -1);
+  };
 
   const [data, setData] = useState<AdminUserList | null>(null);
   const [loading, setLoading] = useState(true);
@@ -41,6 +58,12 @@ export default function AdminUsers({
   const [password, setPassword] = useState('');
   const [roleTarget, setRoleTarget] = useState<AdminUserRow | null>(null);
   const [role, setRole] = useState('user');
+  const [deleteTarget, setDeleteTarget] = useState<AdminUserRow | null>(null);
+  const [deleteForce, setDeleteForce] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [newUsername, setNewUsername] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newRole, setNewRole] = useState('user');
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -103,6 +126,57 @@ export default function AdminUsers({
     }
   };
 
+  const submitCreate = async () => {
+    const username = newUsername.trim();
+    if (username.length < 3) {
+      setNotice('用户名至少 3 个字符');
+      return;
+    }
+    if (newPassword.length < 8) {
+      setNotice('密码至少 8 位');
+      return;
+    }
+    setBusy(true);
+    try {
+      const created = await createAdminUser(token, {
+        username,
+        password: newPassword,
+        role: newRole,
+      });
+      setNotice(
+        `已创建账号 ${created.username}（${ROLE_LABELS[created.role] ?? created.role}）`
+      );
+      setCreateOpen(false);
+      setNewUsername('');
+      setNewPassword('');
+      setNewRole('user');
+      await load();
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : '创建失败');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitDelete = async () => {
+    if (!deleteTarget) return;
+    setBusy(true);
+    try {
+      const res = await deleteAdminUser(token, deleteTarget.id, deleteForce);
+      const removed = Object.values(res.counts).reduce((a, b) => a + b, 0);
+      setNotice(
+        `${deleteTarget.username} 已删除${removed ? `，同时清理 ${removed} 条关联数据` : ''}`
+      );
+      setDeleteTarget(null);
+      setDeleteForce(false);
+      await load();
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : '删除失败');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const submitRole = async () => {
     if (!roleTarget) return;
     setBusy(true);
@@ -138,7 +212,8 @@ export default function AdminUsers({
   };
 
   const denied = !!error && /权限|403|forbidden/i.test(error);
-  const hasActions = can('user_status') || can('user_password') || can('user_role');
+  const hasActions =
+    can('user_status') || canResetPassword || can('user_role') || can('user_delete');
 
   return (
     <div className="space-y-4">
@@ -175,6 +250,15 @@ export default function AdminUsers({
           <Download className="w-3.5 h-3.5" />
           导出 CSV
         </button>
+        {can('user_create') && (
+          <button
+            onClick={() => setCreateOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-orange-500 text-white hover:bg-orange-600 transition-colors"
+          >
+            <UserPlus className="w-3.5 h-3.5" />
+            新建账号
+          </button>
+        )}
         {data && (
           <span className="ml-auto text-xs text-gray-500 dark:text-gray-400">
             共 {data.total} 个账号
@@ -210,7 +294,9 @@ export default function AdminUsers({
       ) : (
         <>
           <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/60">
-            <table className="w-full text-sm">
+            <table
+              className={`adm-table adm-table--wide w-full text-sm ${hasActions ? 'adm-table--actions' : ''}`}
+            >
               <thead>
                 <tr className="text-left text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/60">
                   <th className="px-4 py-3 font-medium">用户名</th>
@@ -278,19 +364,21 @@ export default function AdminUsers({
                           {can('user_status') && (
                             <button
                               onClick={() => toggleStatus(u)}
-                              disabled={busy}
+                              disabled={busy || !canManageRow(u.role)}
+                              title={canManageRow(u.role) ? undefined : '不能操作同级或更高级别的账号'}
                               className="px-2 py-1 text-xs rounded border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40"
                             >
                               {u.is_active ? '禁用' : '启用'}
                             </button>
                           )}
-                          {can('user_password') && (
+                          {canResetPassword && (
                             <button
                               onClick={() => {
                                 setResetTarget(u);
                                 setPassword('');
                               }}
-                              disabled={busy}
+                              disabled={busy || !canManageRow(u.role)}
+                              title={canManageRow(u.role) ? undefined : '不能重置同级或更高级别账号的密码'}
                               className="px-2 py-1 text-xs rounded border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40"
                             >
                               重置密码
@@ -306,6 +394,19 @@ export default function AdminUsers({
                               className="px-2 py-1 text-xs rounded border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40"
                             >
                               改角色
+                            </button>
+                          )}
+                          {can('user_delete') && (
+                            <button
+                              onClick={() => {
+                                setDeleteTarget(u);
+                                setDeleteForce(false);
+                              }}
+                              disabled={busy || !canManageRow(u.role)}
+                              title={canManageRow(u.role) ? undefined : '不能删除同级或更高级别的账号'}
+                              className="px-2 py-1 text-xs rounded border border-red-200 dark:border-red-900/60 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 disabled:opacity-40"
+                            >
+                              删除
                             </button>
                           )}
                         </div>
@@ -366,6 +467,113 @@ export default function AdminUsers({
               className="px-3 py-1.5 text-sm rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50"
             >
               确认重置
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {createOpen && (
+        <Modal title="新建账号" onClose={() => setCreateOpen(false)}>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">用户名</label>
+              <input
+                value={newUsername}
+                onChange={(e) => setNewUsername(e.target.value)}
+                placeholder="3–32 个字符"
+                autoComplete="off"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-orange-500/30"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">初始密码</label>
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="至少 8 位"
+                autoComplete="new-password"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-orange-500/30"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">初始角色</label>
+              <select
+                value={newRole}
+                onChange={(e) => setNewRole(e.target.value)}
+                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-orange-500/30"
+              >
+                {ROLE_OPTIONS.map((r) => (
+                  <option key={r} value={r}>
+                    {ROLE_LABELS[r] ?? r}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <p className="text-[11px] text-gray-400 dark:text-gray-500">
+              创建后请把初始密码告知对方，并提醒其尽快修改。
+            </p>
+          </div>
+          <div className="flex justify-end gap-2 mt-4">
+            <button
+              onClick={() => setCreateOpen(false)}
+              className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300"
+            >
+              取消
+            </button>
+            <button
+              onClick={submitCreate}
+              disabled={busy}
+              className="px-3 py-1.5 text-sm rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50"
+            >
+              创建
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {deleteTarget && (
+        <Modal
+          title={`删除账号 · ${deleteTarget.username}`}
+          onClose={() => {
+            setDeleteTarget(null);
+            setDeleteForce(false);
+          }}
+        >
+          <div className="text-sm text-gray-600 dark:text-gray-300 space-y-2">
+            <p>
+              将永久删除 <span className="font-medium">{deleteTarget.username}</span>
+              （{ROLE_LABELS[deleteTarget.role] ?? deleteTarget.role}）。此操作不可恢复。
+            </p>
+            <label className="flex items-start gap-2 text-xs text-gray-500 dark:text-gray-400">
+              <input
+                type="checkbox"
+                checked={deleteForce}
+                onChange={(e) => setDeleteForce(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                同时删除该账号名下全部数据（会话、Agent 会话、知识库文档、饮食与库存记录等）。
+                不勾选时，如账号仍有数据，删除会被拒绝并提示数据量。
+              </span>
+            </label>
+          </div>
+          <div className="flex justify-end gap-2 mt-4">
+            <button
+              onClick={() => {
+                setDeleteTarget(null);
+                setDeleteForce(false);
+              }}
+              className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300"
+            >
+              取消
+            </button>
+            <button
+              onClick={submitDelete}
+              disabled={busy}
+              className="px-3 py-1.5 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+            >
+              确认删除
             </button>
           </div>
         </Modal>

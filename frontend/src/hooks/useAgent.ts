@@ -24,6 +24,10 @@ import {
 } from '../services/api/agent';
 import { generateId, waitForNextTick } from '../utils';
 import { STORAGE_KEYS } from '../constants';
+import { ApiError } from '../services/api/client';
+
+/** selectSession 的结果：missing 表示该 ID 在服务端不存在或无权访问，调用方应清理 URL。 */
+export type SelectSessionResult = 'ok' | 'missing' | 'error';
 
 // Type for streaming state cache
 interface StreamingState {
@@ -584,8 +588,8 @@ export function useAgent(token?: string) {
     }
   }, [sessionId, isLoading, token, messages]);
 
-  const selectSession = useCallback(async (id: string) => {
-    if (!id) return;
+  const selectSession = useCallback(async (id: string): Promise<SelectSessionResult> => {
+    if (!id) return 'ok';
 
     // Check if we have cached streaming state for this conversation
     const cachedState = streamingCacheRef.current.get(id);
@@ -598,7 +602,7 @@ export function useAgent(token?: string) {
       setIsStreaming(cachedState.isStreaming);
       setIsLoading(cachedState.isStreaming);
       setError(null);
-      return;
+      return 'ok';
     }
 
     // Clear any stale cache for this session (isStreaming=false means connection was lost)
@@ -611,8 +615,8 @@ export function useAgent(token?: string) {
     if (id.startsWith('temp-')) {
       setSessionId(undefined);
       setMessages([]);
-      setError('This conversation has not been saved yet.');
-      return;
+      setError(null);
+      return 'missing';
     }
 
     // Reset streaming state when switching to a non-cached conversation
@@ -626,9 +630,24 @@ export function useAgent(token?: string) {
       );
       setSessionId(history.session_id);
       setMessages(mapHistoryToMessages(history.messages));
+      return 'ok';
     } catch (err) {
       console.error('Failed to load agent session:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load session');
+      const status = err instanceof ApiError ? err.status : 0;
+
+      // 会话不存在（已删除、ID 过期、地址手写错误）或不属于当前账号：
+      // 清空状态并交给调用方把 URL 复位，不把英文原文抛到界面上。
+      if (status === 404 || status === 403) {
+        setSessionId(undefined);
+        setMessages([]);
+        setError(null);
+        return 'missing';
+      }
+
+      setError(
+        status ? '会话加载失败，请稍后重试' : '网络异常，请检查连接后重试'
+      );
+      return 'error';
     } finally {
       setIsLoading(false);
     }

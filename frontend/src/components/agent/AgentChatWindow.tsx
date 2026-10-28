@@ -134,13 +134,11 @@ function EmptyState({
                 <section className="empty-state-hero relative flex flex-col items-center justify-center pt-4 pb-8">
                     <div className="relative mb-7">
                         <div className="absolute inset-0 rounded-full bg-ember-400/25 blur-2xl scale-150" />
-                        <div className="relative w-16 h-16 rounded-[1.4rem] bg-white dark:bg-white/5 border border-cream-300/70 dark:border-white/10 p-2.5 shadow-[0_18px_40px_-24px_rgba(45,32,20,0.5)]">
-                            <img
-                                src="/logo1.png"
-                                alt="CookHero Agent"
-                                className="w-full h-full object-contain animate-float"
-                            />
-                        </div>
+                        <img
+                            src="/logo.svg"
+                            alt="CookHero Agent"
+                            className="relative w-[4.5rem] h-[4.5rem] animate-float drop-shadow-[0_22px_38px_rgba(226,96,44,0.45)]"
+                        />
                     </div>
                     <div className="ch-eyebrow mb-3">Agent Workspace</div>
                     <h1 className="ch-display text-[2.1rem] sm:text-[2.7rem] text-ink-900 dark:text-cream-50 text-center">

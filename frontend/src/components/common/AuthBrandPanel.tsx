@@ -20,9 +20,11 @@ export function AuthBrandPanel({ variant = 'login' }: { variant?: 'login' | 'reg
 
       <div className="relative">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-white/[0.06] border border-white/10 p-1.5">
-            <img src="/logo1.png" alt="CookHero" className="w-full h-full object-contain" />
-          </div>
+          <img
+            src="/logo.svg"
+            alt="CookHero"
+            className="w-12 h-12 drop-shadow-[0_12px_24px_rgba(226,96,44,0.55)]"
+          />
           <div>
             <div className="ch-wordmark text-xl text-cream-100">CookHero</div>
             <div className="text-[10px] tracking-[0.22em] uppercase text-cream-100/40">
@@ -41,13 +43,21 @@ export function AuthBrandPanel({ variant = 'login' }: { variant?: 'login' | 'reg
           <h1 className="ch-display text-[2.9rem] xl:text-[3.4rem] leading-[1.08] text-cream-50">
             你的厨房,
             <br />
-            从此多一位<span className="text-ember-300 italic">搭档</span>。
+            从此多一位
+            <span className="bg-gradient-to-r from-ember-300 to-honey-300 bg-clip-text text-transparent">
+              搭档
+            </span>
+            。
           </h1>
         ) : (
           <h1 className="ch-display text-[2.9rem] xl:text-[3.4rem] leading-[1.08] text-cream-50">
             把每一顿饭,
             <br />
-            做成一件<span className="text-ember-300 italic">作品</span>。
+            做成一件
+            <span className="bg-gradient-to-r from-ember-300 to-honey-300 bg-clip-text text-transparent">
+              作品
+            </span>
+            。
           </h1>
         )}
         <p className="mt-6 text-[15px] leading-relaxed text-cream-100/60 max-w-md">
@@ -63,7 +73,7 @@ export function AuthBrandPanel({ variant = 'login' }: { variant?: 'login' | 'reg
             { icon: <Package className="w-4 h-4" />, text: '库存、采购与家庭档案，一处打理' },
           ].map((item) => (
             <div key={item.text} className="flex items-center gap-3 text-sm text-cream-100/75">
-              <span className="w-8 h-8 rounded-xl bg-white/[0.06] border border-white/10 flex items-center justify-center text-ember-300 shrink-0">
+              <span className="w-8 h-8 rounded-xl bg-ember-400/10 border border-ember-300/20 flex items-center justify-center text-ember-200 shrink-0">
                 {item.icon}
               </span>
               {item.text}

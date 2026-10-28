@@ -51,9 +51,7 @@ function RegisterPage() {
 
         <div className="relative w-full max-w-[420px]">
           <div className="lg:hidden flex items-center gap-2.5 mb-9">
-            <div className="w-10 h-10 rounded-2xl bg-white border border-cream-300/70 p-1.5 shadow-sm">
-              <img src="/logo1.png" alt="CookHero" className="w-full h-full object-contain" />
-            </div>
+            <img src="/logo.svg" alt="CookHero" className="w-10 h-10 drop-shadow-[0_8px_18px_rgba(226,96,44,0.35)]" />
             <div>
               <div className="ch-wordmark text-lg text-ink-900">CookHero</div>
               <div className="text-[9px] tracking-[0.2em] uppercase text-ink-400">

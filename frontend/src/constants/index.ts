@@ -23,6 +23,15 @@ export const STORAGE_KEYS = {
   STREAMING_CACHE: 'cookhero_streaming_cache',
 } as const;
 
+/**
+ * 标记「会话由 HttpOnly Cookie 承载」。
+ *
+ * 改造前大量组件以 `token` 作为"已登录/可请求"的判据（`if (!token) return`），
+ * 现在令牌不再暴露给 JS，用一个非空哨兵值维持这些判断，同时请求层不会把它
+ * 拼进 Authorization 头——真正的凭据由浏览器自动携带。
+ */
+export const COOKIE_SESSION_TOKEN = '__cookie_session__';
+
 // Intent Labels
 export const INTENT_LABELS: Record<string, string> = {
   recipe_search: '菜谱搜索',

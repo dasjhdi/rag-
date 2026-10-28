@@ -50,16 +50,17 @@ import type {
   ToolDistributionResponse,
 } from '../types/llmStats';
 
-// Chart colors
+// Chart colors：与「Ember Kitchen」设计体系同源的暖色序列，
+// 深色（后台）与浅色（主应用）底色下都能拉开区分度
 const COLORS = [
-  '#f97316', // orange-500
-  '#3b82f6', // blue-500
-  '#10b981', // emerald-500
-  '#8b5cf6', // violet-500
-  '#ec4899', // pink-500
-  '#eab308', // yellow-500
-  '#6366f1', // indigo-500
-  '#14b8a6', // teal-500
+  '#e2602c', // ember
+  '#d3a04c', // honey
+  '#86ac86', // sage
+  '#a8626f', // wine
+  '#c98a5e', // clay
+  '#8a6b7f', // plum gray
+  '#52795c', // herb
+  '#b98432', // amber brown
 ];
 
 /**
@@ -368,7 +369,11 @@ function DistributionChart({ data, loading, activeIndex, onActiveChange }: Distr
 /**
  * Main LLM Stats page component
  */
-export default function LLMStatsPage() {
+export default function LLMStatsPage({
+  embedded = false,
+}: {
+  embedded?: boolean;
+}) {
 
   const { token } = useAuth();
 
@@ -537,8 +542,8 @@ export default function LLMStatsPage() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 md:p-6">
-      <div className="max-w-6xl mx-auto">
+    <div className={embedded ? '' : 'flex-1 overflow-y-auto p-4 md:p-6'}>
+      <div className={embedded ? '' : 'max-w-6xl mx-auto'}>
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <div>
