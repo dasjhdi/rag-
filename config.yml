@@ -33,14 +33,15 @@
 
 llm:
   # Fast tier - Low latency models for auxiliary tasks
-  # 注意：这里的模型名必须与 base_url 对应服务商的可用模型一致，
-  # 否则会报 404 Model not exist（下方三个均支持 function calling，Agent 模式需要）。
+  # 注意：模型名必须与 base_url 对应服务商的可用模型一致，否则 404/403。
+  # 原 qianwen MaaS 通道整颗 key 被服务商拒绝（AccessDenied.Unpurchased，所有模型 403），
+  # 这里改用与 normal 同一个 siliconflow 账号；三个模型均验证过 function calling。
   fast:
     model_names:
-      - "qwen3.7-flash"
-      - "qwen3.8-flash"
-      - "glm-5.3"
-    base_url: "https://maas.qianwenaiapi.com/compatible-mode/v1"
+      - "deepseek-ai/DeepSeek-V4.1-Flash"
+      - "zai-org/GLM-5.3-Flash"
+      - "stepfun-ai/Step-3.5-Flash"
+    base_url: "https://api.siliconflow.cn/v1"
     # api_key: Loaded from .env (FAST_LLM_API_KEY or LLM_API_KEY)
     # 意图识别 / 查询改写 / 元数据抽取都要稳定复现，低温更合适
     temperature: 0.2
@@ -54,7 +55,7 @@ llm:
     base_url: "https://api.siliconflow.cn/v1"
     # api_key: Loaded from .env (LLM_API_KEY)
     # 烹饪指令需要稳定、可复现的火候与时间，0.45 比 1.0 明显更少跑偏；
-    # max_tokens 是上限，实际按意图在代码里收窄（见 conversation_service._INTENT_MAX_TOKENS）
+    # max_tokens 是上限，实际按意图在代码里收窄（见 app/conversation/answer_policy.py 的 INTENT_MAX_TOKENS）
     temperature: 0.45
     max_tokens: 2048
 
@@ -62,12 +63,12 @@ llm:
   # 该配置由 app/vision/provider.py 使用（LLMConfig.vision）。
   vision:
     # 主模型优先；失败时按顺序回退（VisionProvider 会逐个尝试）。
-    # 注意：omni 系列免费额度已耗尽（403 AccessDenied.Unpurchased），
-    # 这里选用同网关下已验证可用的 qwen3.7-flash / qwen3.8-flash。
+    # 原 qianwen 通道同样整颗 key 403，改用 siliconflow 的 VL 模型；
+    # 实测同一张图 8B 给出「烧茄子」、30B 给出「鱼香茄子」，8B 更快故排在前面。
     model_names:
-      - "qwen3.7-flash"
-      - "qwen3.8-flash"
-    base_url: "https://maas.qianwenaiapi.com/compatible-mode/v1"
+      - "Qwen/Qwen3-VL-8B-Instruct"
+      - "Qwen/Qwen3-VL-30B-A3B-Instruct"
+    base_url: "https://api.siliconflow.cn/v1"
     # api_key: Loaded from .env (VISION_API_KEY or LLM_API_KEY)
     temperature: 0.2
     max_tokens: 1024

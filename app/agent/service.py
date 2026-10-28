@@ -16,6 +16,7 @@ from typing import Any, AsyncGenerator, Optional
 DEFAULT_TRUNCATE_THRESHOLD = 500
 TRUNCATE_SUFFIX = "...[truncated]"
 
+from app.utils.error_messages import friendly_llm_error
 from app.agent.types import AgentChunk, AgentChunkType, AgentContext
 from app.agent.agents import BaseAgent
 from app.agent.context import AgentContextBuilder, AgentContextCompressor
@@ -482,7 +483,7 @@ class AgentService:
 
         except Exception as e:
             logger.exception(f"AgentService.chat failed: {e}")
-            yield self._format_event("error", {"error": str(e)})
+            yield self._format_event("error", {"error": friendly_llm_error(e)})
 
     def _get_agent_or_fallback(self, agent_name: str) -> BaseAgent:
         try:

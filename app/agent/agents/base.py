@@ -11,6 +11,7 @@ import logging
 from abc import ABC
 from typing import Any, AsyncGenerator
 
+from app.utils.error_messages import friendly_llm_error
 from app.agent.types import (
     AgentChunk,
     AgentChunkType,
@@ -211,7 +212,7 @@ class BaseAgent(ABC):
 
                 yield AgentChunk(
                     type=AgentChunkType.ERROR,
-                    data={"error": str(e), "iteration": iteration},
+                    data={"error": friendly_llm_error(e), "iteration": iteration},
                 )
 
                 yield AgentChunk(
@@ -219,7 +220,7 @@ class BaseAgent(ABC):
                     data=TraceStep(
                         iteration=iteration,
                         action="error",
-                        error=str(e),
+                        error=friendly_llm_error(e),
                     ),
                 )
 
@@ -408,7 +409,7 @@ class BaseAgent(ABC):
                 logger.exception(f"Agent streaming iteration {iteration} failed: {e}")
                 yield AgentChunk(
                     type=AgentChunkType.ERROR,
-                    data={"error": str(e), "iteration": iteration},
+                    data={"error": friendly_llm_error(e), "iteration": iteration},
                 )
                 # 出错且整轮对话还没有输出任何正文时给出兜底提示，
                 # 避免前端只显示错误、没有任何可读回复。
