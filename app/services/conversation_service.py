@@ -23,6 +23,11 @@ from app.conversation import (
     UnifiedSource,
     conversation_repository,
 )
+from app.conversation.answer_policy import (
+    build_context_prompt,
+    history_for_llm,
+    max_tokens_for,
+)
 from app.services.rag_service import rag_service_instance, RetrievalResult
 from app.services.user_service import user_service
 from app.services.evaluation_service import evaluation_service
@@ -36,7 +41,6 @@ from app.vision import vision_agent
 from app.vision.provider import ImageInput
 
 logger = logging.getLogger(__name__)
-
 
 class ConversationService:
     """
@@ -240,7 +244,7 @@ class ConversationService:
 
         full_response = ""
         try:
-            async for chunk in self._generate_response(ctx):
+            async for chunk in self._generate_response(ctx, intent_result):
                 full_response += chunk
                 yield f"data: {json.dumps({'type': 'text', 'content': chunk})}\n\n"
         except Exception as exc:
@@ -305,18 +309,8 @@ class ConversationService:
             compressed_count,
         ) = await conversation_repository.get_compressed_summary(conv_id)
 
-        # Build history structures (append sources to assistant content)
-        history_dicts = [
-            {
-                "role": h["role"],
-                "content": self._format_content_with_sources(
-                    h["content"], h.get("sources")
-                )
-                if h["role"] == "assistant"
-                else h["content"],
-            }
-            for h in history
-        ]
+        # 历史消息只保留正文（来源随消息单独存储，不再拼进附录）
+        history_dicts = history_for_llm(history)
         history_text = self.context_manager.build_history_text(
             history=history_dicts,
             compressed_count=compressed_count,
@@ -418,6 +412,7 @@ class ConversationService:
             history_text,
             user_id=ctx.user_id,
             conversation_id=ctx.conv_id,
+            query=ctx.message,
         )
 
     # =========================================================================
@@ -746,6 +741,8 @@ class ConversationService:
             yield self._emit_thinking(ctx, constraint_message)
 
         doc_count = len(retrieval_result.documents)
+        # 只有真的没有命中才置位：有文档但被约束全过滤掉的情况也属于「没命中」
+        ctx.retrieval_empty = doc_count == 0
 
         # Convert RAG sources to unified format
         if retrieval_result.sources:
@@ -789,9 +786,14 @@ class ConversationService:
                 for event in events:
                     yield event
 
+    def _max_tokens_for(self, intent_result: Optional[IntentDetectionResult]) -> int:
+        """按意图给出输出上限，避免短问答和菜谱共用同一个大预算。"""
+        return max_tokens_for(intent_result)
+
     async def _generate_response(
         self,
         ctx: ChatContext,
+        intent_result: Optional[IntentDetectionResult] = None,
     ) -> AsyncGenerator[str, None]:
         """
         Generate LLM response with context.
@@ -806,6 +808,7 @@ class ConversationService:
             rewritten_query=ctx.rewritten_query,
             vision_context=ctx.vision_context,
             constraint_context=ctx.constraint_context,
+            retrieval_empty=ctx.retrieval_empty,
         )
 
         # Build LLM messages
@@ -822,6 +825,7 @@ class ConversationService:
             messages_for_llm,
             user_id=ctx.user_id,
             conversation_id=ctx.conv_id,
+            max_tokens=self._max_tokens_for(intent_result),
         ):
             yield chunk
 
@@ -988,95 +992,20 @@ class ConversationService:
         rewritten_query: str,
         vision_context: str = "",
         constraint_context: str = "",
+        retrieval_empty: bool = False,
     ) -> str:
+        """Build context prompt combining vision, RAG, and web search results.
+
+        实现见 ``app.conversation.answer_policy.build_context_prompt``。
         """
-        Build context prompt combining vision, RAG, and web search results.
-        Clearly distinguishes between different context sources.
-        """
-        parts = []
-
-        # Add vision context first (if available)
-        if vision_context.strip():
-            parts.append(
-                "【图片工具分析结果】\n"
-                "用户上传了图片，以下是工具分析结果，请参考回答：\n"
-                f"{vision_context.strip()}\n"
-            )
-
-        if rewritten_query.strip():
-            parts.append(f"【重写后的检索语句】\n{rewritten_query}\n")
-
-        # Add constraint reasoning before RAG so hard constraints are prominent.
-        if constraint_context.strip():
-            parts.append(
-                "【饮食约束推理结果】\n"
-                "以下约束由确定性规则得出，请严格遵守并在回答中解释排除原因：\n"
-                f"{constraint_context.strip()}\n"
-            )
-
-        # Add RAG context (local knowledge) with citation rules
-        if rag_context.strip():
-            parts.append(
-                "【本地知识库资料（可引用）】\n"
-                "每条资料以 [编号] 开头，代表一条可引用的来源。引用规则：\n"
-                "1. 引用某条资料的具体内容时，在句末标注对应编号，如 [1]；\n"
-                "2. 只标注真正用到的编号，不要把所有来源罗列一遍；\n"
-                "3. 编号必须来自资料开头，不要自行编造；\n"
-                "4. 资料未覆盖的推断不要加编号，并说明属于通用经验。\n"
-                f"{rag_context.strip()}\n"
-            )
-
-        # Add web search context
-        if web_context.strip():
-            parts.append(
-                "【互联网搜索工具分析结果】\n"
-                "下面是从互联网搜索获取的补充信息（请注意甄别信息可靠性）：\n"
-                f"{web_context.strip()}\n"
-            )
-
-        return "\n".join(parts)
-
-    def _format_content_with_sources(
-        self,
-        content: str,
-        sources: Optional[List[Dict[str, Any]]],
-    ) -> str:
-        """
-        Format assistant message content with sources appended.
-
-        For LLM context, we append sources in a brief structured way so the model
-        knows what references were used in previous responses.
-
-        Args:
-            content: The assistant's response content
-            sources: Optional list of source dicts with type, info, url
-
-        Returns:
-            Formatted content with sources appended
-        """
-        if not sources:
-            return content
-
-        # Format sources as brief appendix
-        source_lines = []
-        for src in sources:  # Limit to first 5
-            src_type = src.get("type", "")
-            src_info = src.get("info", "")[:8096]  # Truncate long info
-
-            if src_type == "rag":
-                source_lines.append(f"知识库: {src_info}")
-            elif src_type == "web":
-                src_url = src.get("url", "")
-                source_lines.append(f"网络搜索: {src_info}({src_url})")
-            else:
-                source_lines.append(src_info)
-
-        if not source_lines:
-            return content
-
-        sources_summary = "、".join(source_lines)
-
-        return f"{content}\n\n[参考来源: {sources_summary}]"
+        return build_context_prompt(
+            rag_context=rag_context,
+            web_context=web_context,
+            rewritten_query=rewritten_query,
+            vision_context=vision_context,
+            constraint_context=constraint_context,
+            retrieval_empty=retrieval_empty,
+        )
 
     # =========================================================================
     # Other Public Methods

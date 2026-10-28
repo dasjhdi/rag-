@@ -99,6 +99,8 @@ class ChatContext:
     web_search_context: str = ""
     rag_context: str = ""
     rewritten_query: str = ""
+    # 知识库检索执行了但没有任何命中：用于触发「诚实降级」提示
+    retrieval_empty: bool = False
 
     # Constraint reasoning (SU-17)
     constraint_context: str = ""

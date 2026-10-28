@@ -360,6 +360,19 @@ class IntentDetector:
 
     # 低于该置信度时，认为需要向用户澄清
     CONFIDENCE_THRESHOLD = 0.5
+
+    # 模型不可用时的关键词兜底：至少别把「红烧肉怎么做」当成闲聊而不检索。
+    # 只求方向正确，不求分类精细——真正的理解仍交给模型。
+    _COOKING_HINTS = (
+        "怎么做", "做法", "菜谱", "食谱", "食材", "配料", "调料", "火候", "步骤",
+        "炒", "炖", "煮", "蒸", "烤", "焖", "煎", "炸", "拌", "腌", "烘焙",
+        "汤", "酱", "馅", "面", "饭", "份量", "几分钟", "多少度",
+        # 追问场景：上一轮在讲做菜，这一轮常只说「太酸/不熟/怎么办」
+        "怎么办", "怎么", "能不能", "可以吗", "要不要",
+        "太酸", "太咸", "太甜", "太辣", "太油", "太干", "太稀", "太硬",
+        "不熟", "糊了", "腥", "柴", "收汁", "入味", "多了", "少了", "换成",
+    )
+    _RECIPE_HINTS = ("怎么做", "做法", "菜谱", "食谱", "教程", "步骤", "需要什么")
     # 旧格式未提供置信度时的默认值（视为正常可信）
     DEFAULT_CONFIDENCE = 0.5
 
@@ -384,6 +397,7 @@ class IntentDetector:
         history_text: Optional[str] = None,
         user_id: Optional[str] = None,
         conversation_id: Optional[str] = None,
+        query: str = "",
     ) -> IntentDetectionResult:
         """Detect intent, slots and whether RAG retrieval is needed.
 
@@ -412,10 +426,10 @@ class IntentDetector:
             logger.warning(
                 "Intent detection failed after %d attempt(s): %s", exc.attempts, exc
             )
-            result = self._safe_default()
+            result = self._safe_default(query or (history_text or "")[-200:])
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning("Intent detection failed: %s", exc)
-            result = self._safe_default()
+            result = self._safe_default(query or (history_text or "")[-200:])
 
         self._record_metrics(result)
         return result
@@ -487,8 +501,32 @@ class IntentDetector:
             needs_clarification=needs_clarification,
         )
 
-    def _safe_default(self) -> IntentDetectionResult:
-        """安全默认：不检索、按闲聊处理。"""
+    def _safe_default(self, query: str = "") -> IntentDetectionResult:
+        """模型不可用时的兜底。
+
+        识别失败不等于「闲聊」：如果问题明显在说做菜，仍应检索知识库，
+        否则用户问「红烧肉怎么做」会只拿到模型凭记忆编的回答，来源为空。
+        无法判断时才退回闲聊。
+        """
+        text = (query or "").strip()
+        if text and any(hint in text for hint in self._COOKING_HINTS):
+            intent = (
+                QueryIntent.RECIPE_SEARCH
+                if any(hint in text for hint in self._RECIPE_HINTS)
+                else QueryIntent.COOKING_TIPS
+            )
+            return IntentDetectionResult(
+                need_rag=True,
+                intent=intent,
+                reason="Detection failed, heuristic fallback (cooking keywords)",
+                raw={},
+                intents=[intent],
+                # 恰好等于阈值：既不触发澄清，也不假装识别得很确定
+                confidence=self.CONFIDENCE_THRESHOLD,
+                slots=QuerySlots(),
+                needs_clarification=False,
+            )
+
         return IntentDetectionResult(
             need_rag=False,
             intent=QueryIntent.GENERAL_CHAT,

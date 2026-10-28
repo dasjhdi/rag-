@@ -42,8 +42,9 @@ llm:
       - "glm-5.3"
     base_url: "https://maas.qianwenaiapi.com/compatible-mode/v1"
     # api_key: Loaded from .env (FAST_LLM_API_KEY or LLM_API_KEY)
-    temperature: 1
-    max_tokens: 131072
+    # 意图识别 / 查询改写 / 元数据抽取都要稳定复现，低温更合适
+    temperature: 0.2
+    max_tokens: 8192
 
   # Normal tier - High quality models for main generation
   normal:
@@ -52,8 +53,10 @@ llm:
       - "deepseek-ai/DeepSeek-V3.2"
     base_url: "https://api.siliconflow.cn/v1"
     # api_key: Loaded from .env (LLM_API_KEY)
-    temperature: 1
-    max_tokens: 131072
+    # 烹饪指令需要稳定、可复现的火候与时间，0.45 比 1.0 明显更少跑偏；
+    # max_tokens 是上限，实际按意图在代码里收窄（见 conversation_service._INTENT_MAX_TOKENS）
+    temperature: 0.45
+    max_tokens: 2048
 
   # Vision tier - 多模态模型（图片识别 / 食材与菜品识别）
   # 该配置由 app/vision/provider.py 使用（LLMConfig.vision）。
