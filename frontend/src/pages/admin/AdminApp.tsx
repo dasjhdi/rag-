@@ -34,13 +34,10 @@ import { useAuth } from '../../contexts';
 import { ApiError, UnauthorizedError } from '../../services/api/client';
 import type { AdminOverview, AdminWhoami } from '../../services/api/admin';
 import { getAdminOverview, getAdminWhoami } from '../../services/api/admin';
-import type { TotpStatus } from '../../services/api/auth';
-import { totpStatus } from '../../services/api/auth';
 import EvaluationPage from '../Evaluation';
 import LLMStatsPage from '../LLMStats';
 import AdminAlerts from './AdminAlerts';
 import AdminAudit from './AdminAudit';
-import AdminTotp from './AdminTotp';
 import AdminSessions from './AdminSessions';
 import AdminUsage from './AdminUsage';
 import AdminUsers from './AdminUsers';
@@ -55,8 +52,7 @@ type Section =
   | 'calls'
   | 'sessions'
   | 'audit'
-  | 'alerts'
-  | 'security';
+  | 'alerts';
 
 type NavItem = {
   key: Section;
@@ -161,16 +157,6 @@ const NAV: NavItem[] = [
     need: '仅超级管理员',
     accent: '#e38573',
   },
-  {
-    key: 'security',
-    label: '账号安全',
-    en: 'SECURITY',
-    desc: '双因子绑定、恢复码与关闭验证',
-    icon: ShieldCheck,
-    group: '安全',
-    need: '任意后台角色',
-    accent: '#c4838d',
-  },
 ];
 
 const CAP_LABELS: Record<string, string> = {
@@ -196,7 +182,7 @@ function readSectionFromUrl(): Section {
 }
 
 export default function AdminApp() {
-  const { token, username, login, loginWithTotp, logout, isReady } = useAuth();
+  const { token, username, login, logout, isReady } = useAuth();
   const [whoami, setWhoami] = useState<AdminWhoami | null>(null);
   const [access, setAccess] = useState<Access>('checking');
   const [overview, setOverview] = useState<AdminOverview | null>(null);
@@ -207,13 +193,7 @@ export default function AdminApp() {
   const [loginName, setLoginName] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
-  const [totpError, setTotpError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  // 双因子：密码通过后进入第二步，或提示必须绑定
-  const [totpStage, setTotpStage] = useState<'password' | 'totp'>('password');
-  const [totpChallenge, setTotpChallenge] = useState('');
-  const [totpCode, setTotpCode] = useState('');
-  const [totpState, setTotpState] = useState<TotpStatus | null>(null);
 
   const authToken = token ?? '';
 
@@ -226,14 +206,6 @@ export default function AdminApp() {
     try {
       const res = await getAdminWhoami(token);
       setWhoami(res);
-      if (res.is_admin) {
-        // 刷新页面后同样要知道「是否必须先绑定双因子」
-        try {
-          setTotpState(await totpStatus());
-        } catch {
-          setTotpState(null);
-        }
-      }
       setAccess(res.is_admin ? 'granted' : 'denied');
     } catch (err) {
       setWhoami(null);
@@ -263,11 +235,9 @@ export default function AdminApp() {
     void checkAccess();
   }, [checkAccess]);
 
-  const totpBlocked = Boolean(totpState?.required && !totpState.enabled);
-
   useEffect(() => {
-    if (access === 'granted' && !totpBlocked) void loadOverview();
-  }, [access, totpBlocked, loadOverview]);
+    if (access === 'granted') void loadOverview();
+  }, [access, loadOverview]);
 
   // 切换模块时同步地址栏，刷新后仍停在同一个模块
   useEffect(() => {
@@ -297,42 +267,10 @@ export default function AdminApp() {
     void loadOverview();
   };
 
-  const handleTotpLogin = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (submitting) return;
-    if (totpCode.trim().length < 6) {
-      setTotpError('请输入 6 位动态码或恢复码');
-      return;
-    }
-    setSubmitting(true);
-    setTotpError(null);
-    setLoginError(null);
-    try {
-      await loginWithTotp(totpChallenge, totpCode.trim());
-      await finishAdminLogin();
-      setTotpStage('password');
-      setTotpChallenge('');
-      setTotpCode('');
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 401) {
-        setTotpError('动态码不正确，或验证已过期（请重新输入密码）');
-      } else {
-        setTotpError(err instanceof Error ? err.message : '验证失败，请重试');
-      }
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   const handleLogout = () => {
     logout();
     setLoginError(null);
     setLoginPassword('');
-    setTotpStage('password');
-    setTotpChallenge('');
-    setTotpCode('');
-    setTotpError(null);
-    setTotpState(null);
   };
 
   /** 已登录但无后台权限时切换账号：退出当前会话，回到本页登录框。 */
@@ -341,18 +279,12 @@ export default function AdminApp() {
     logout({ revoke: false });
     setLoginError(message ?? null);
     setLoginPassword('');
-    setTotpStage('password');
-    setTotpChallenge('');
-    setTotpCode('');
-    setTotpError(null);
-    setTotpState(null);
   };
 
   /**
    * 后台专用登录：先验证凭据，再校验后台权限。
    * 普通用户即使密码正确也不放行，并立即吊销这次登录产生的会话。
    */
-  /** 登录成功（含第二因素）后统一收尾：校验后台身份 + 拉取双因子状态。 */
   const finishAdminLogin = async () => {
     const me = await getAdminWhoami('');
     if (!me.is_admin) {
@@ -363,13 +295,6 @@ export default function AdminApp() {
       setAccess('unavailable');
       return;
     }
-    let status: TotpStatus | null = null;
-    try {
-      status = await totpStatus();
-    } catch {
-      status = null;
-    }
-    setTotpState(status);
     setWhoami(me);
     setAccess('granted');
     setLoginPassword('');
@@ -386,14 +311,7 @@ export default function AdminApp() {
     setSubmitting(true);
     setLoginError(null);
     try {
-      const outcome = await login({ username: name, password: loginPassword });
-      if (outcome.requiresTotp && outcome.challenge) {
-        setTotpChallenge(outcome.challenge);
-        setTotpStage('totp');
-        setTotpCode('');
-        setTotpError(null);
-        return;
-      }
+      await login({ username: name, password: loginPassword });
       await finishAdminLogin();
     } catch (err) {
       if (err instanceof ApiError && err.status === 429) {
@@ -431,17 +349,6 @@ export default function AdminApp() {
         onUsername={setLoginName}
         onPassword={setLoginPassword}
         onSubmit={handleLogin}
-        stage={totpStage}
-        totpCode={totpCode}
-        totpError={totpError}
-        onTotpCode={setTotpCode}
-        onSubmitTotp={handleTotpLogin}
-        onBackToPassword={() => {
-          setTotpStage('password');
-          setTotpChallenge('');
-          setTotpCode('');
-          setTotpError(null);
-        }}
       />
     );
   }
@@ -496,43 +403,6 @@ export default function AdminApp() {
             : { label: '重试', onClick: () => void checkAccess() }
         }
       />
-    );
-  }
-
-  const reloadTotp = async () => {
-    try {
-      setTotpState(await totpStatus());
-    } catch {
-      /* 状态刷新失败不阻断当前操作 */
-    }
-  };
-
-  const requireRelogin = () => {
-    logout({ revoke: false });
-    setAccess('unavailable');
-    setTotpState(null);
-    setTotpStage('password');
-    setTotpChallenge('');
-    setTotpCode('');
-  };
-
-  // 策略要求超管必须绑定：后台只保留绑定页，不渲染任何业务数据
-  if (access === 'granted' && totpBlocked) {
-    return (
-      <div className="adm-scope adm-gate">
-        <div style={{ width: '100%', maxWidth: 720 }}>
-          <div className="adm-gate-brand">
-            <img src="/logo.svg" alt="" />
-            CookHero <span>Control Deck · 安全设置</span>
-          </div>
-          <AdminTotp
-            status={totpState}
-            forced
-            onChanged={reloadTotp}
-            onRequireRelogin={requireRelogin}
-          />
-        </div>
-      </div>
     );
   }
 
@@ -678,13 +548,6 @@ export default function AdminApp() {
                 {activeItem.key === 'alerts' && (
                   <AdminAlerts token={authToken} canRun={capabilities.includes('alerts')} />
                 )}
-                {activeItem.key === 'security' && (
-                  <AdminTotp
-                    status={totpState}
-                    onChanged={reloadTotp}
-                    onRequireRelogin={requireRelogin}
-                  />
-                )}
               </div>
             )}
           </div>
@@ -706,12 +569,6 @@ function AdminLogin({
   onUsername,
   onPassword,
   onSubmit,
-  stage,
-  totpCode,
-  totpError,
-  onTotpCode,
-  onSubmitTotp,
-  onBackToPassword,
 }: {
   username: string;
   password: string;
@@ -720,12 +577,6 @@ function AdminLogin({
   onUsername: (value: string) => void;
   onPassword: (value: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  stage: 'password' | 'totp';
-  totpCode: string;
-  totpError: string | null;
-  onTotpCode: (value: string) => void;
-  onSubmitTotp: (event: FormEvent<HTMLFormElement>) => void;
-  onBackToPassword: () => void;
 }) {
   return (
     <div className="adm-scope adm-gate">
@@ -737,62 +588,9 @@ function AdminLogin({
         <div className="adm-gate-icon">
           <ShieldCheck size={20} />
         </div>
-        <h1 className="adm-gate-title">
-          {stage === 'totp' ? '输入动态验证码' : '登录管理控制台'}
-        </h1>
-        <p className="adm-gate-text">
-          {stage === 'totp'
-            ? `账号 ${username} 已启用双因子，请输入验证器上的 6 位码（或用恢复码）`
-            : '仅管理员与超级管理员可进入'}
-        </p>
+        <h1 className="adm-gate-title">登录管理控制台</h1>
+        <p className="adm-gate-text">仅管理员与超级管理员可进入</p>
 
-        {stage === 'totp' ? (
-          <form className="adm-login-form" onSubmit={onSubmitTotp}>
-            <label className="adm-field">
-              <span>动态验证码</span>
-              <input
-                className="adm-input"
-                value={totpCode}
-                onChange={(e) => onTotpCode(e.target.value.replace(/\s/g, '').slice(0, 20))}
-                placeholder="000000 或 xxxxx-xxxxx"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                autoFocus
-              />
-            </label>
-
-            {totpError && (
-              <p className="adm-login-error" role="alert">
-                <ShieldAlert size={13} />
-                {totpError}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              className="adm-btn is-primary adm-login-submit"
-              disabled={submitting || totpCode.trim().length < 6}
-            >
-              {submitting ? (
-                <>
-                  <Loader2 className="adm-spin" size={13} />
-                  正在验证…
-                </>
-              ) : (
-                '验证并登录'
-              )}
-            </button>
-
-            <button
-              type="button"
-              className="adm-btn adm-login-submit"
-              onClick={onBackToPassword}
-              disabled={submitting}
-            >
-              返回重新输入密码
-            </button>
-          </form>
-        ) : (
         <form className="adm-login-form" onSubmit={onSubmit}>
           <label className="adm-field">
             <span>账号</span>
@@ -839,7 +637,6 @@ function AdminLogin({
             )}
           </button>
         </form>
-        )}
 
         <a className="adm-login-back" href="/">
           返回主站

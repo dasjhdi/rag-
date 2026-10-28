@@ -27,11 +27,7 @@ function LoginPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const outcome = await login({ username: username.trim(), password });
-      if (outcome.requiresTotp) {
-        setError('该账号已启用双因子，请从管理后台登录');
-        return;
-      }
+      await login({ username: username.trim(), password });
       navigate(from, { replace: true });
     } catch (err) {
       const msg = err instanceof Error ? err.message : '登录失败，请稍后重试';

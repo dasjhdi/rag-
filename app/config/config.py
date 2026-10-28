@@ -107,15 +107,6 @@ class Settings(BaseModel):
     # Prompt injection protection
     PROMPT_GUARD_ENABLED: bool = os.getenv("PROMPT_GUARD_ENABLED", "true").lower() == "true"
 
-    # --- 双因子（TOTP）---
-    # 关掉后：已绑定的账号仍可用动态码登录，但不再强制超管绑定
-    TOTP_ENABLED: bool = os.getenv("TOTP_ENABLED", "true").lower() == "true"
-    TOTP_ISSUER: str = os.getenv("TOTP_ISSUER", "CookHero")
-    # 超管不绑定 TOTP 就拿不到后台数据（仍可登录，以便进入绑定页）
-    TOTP_REQUIRED_FOR_SUPER_ADMIN: bool = (
-        os.getenv("TOTP_REQUIRED_FOR_SUPER_ADMIN", "true").lower() == "true"
-    )
-    
     # ==========================================================================
     # Module Configurations
     # ==========================================================================

@@ -73,20 +73,6 @@ class UserModel(Base):
         Integer, nullable=False, default=0, server_default="0"
     )
 
-    # --- Two-factor authentication (TOTP) ---
-    # secret 由 app.security.secret_box 加密后落库；未绑定时为空
-    totp_secret: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    totp_enabled: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default="false"
-    )
-    totp_confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    # 已消费的时间片，用于拒绝同一动态码的重复使用
-    totp_last_counter: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0"
-    )
-    # [{"hash": "...", "used_at": null}]，只存哈希
-    totp_recovery_codes: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
-
     __table_args__ = (
         Index("ix_users_username", "username", unique=True),
     )

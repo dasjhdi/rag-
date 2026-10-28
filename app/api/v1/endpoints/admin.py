@@ -69,7 +69,6 @@ from app.diet.database.models import (
     UserFoodPreferenceModel,
 )
 from app.security.admin_rate_limit import admin_rate_limit
-from app.services import totp_service
 from app.security.token_version import token_version_service
 from app.services import pricing
 
@@ -143,26 +142,10 @@ async def get_current_user(request: Request) -> UserModel:
     return user
 
 
-def _assert_totp_policy(user: UserModel) -> None:
-    """超管未绑定双因子时，后台 API 一律拒绝（前端据此只显示绑定页）。
-
-    细节用结构化 detail 返回，前端可以按 code 分支，而不用匹配中文文案。
-    """
-    if totp_service.is_required_for(user):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "code": "totp_setup_required",
-                "message": "超级管理员需先绑定双因子（TOTP）才能访问后台数据",
-            },
-        )
-
-
 async def require_admin(user: UserModel = Depends(get_current_user)) -> UserModel:
     """Any admin role passes."""
     if user.role not in ADMIN_ROLES:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无后台访问权限")
-    _assert_totp_policy(user)
     return user
 
 

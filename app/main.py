@@ -133,8 +133,6 @@ app.add_middleware(
 
 EXEMPT_PATHS = {
     f"{settings.API_V1_STR}/auth/login",
-    # 第二步动态码校验：此时用户还没有访问令牌
-    f"{settings.API_V1_STR}/auth/login/totp",
     f"{settings.API_V1_STR}/auth/register",
     f"{settings.API_V1_STR}/auth/refresh",
 }

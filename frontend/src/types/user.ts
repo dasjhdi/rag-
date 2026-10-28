@@ -15,12 +15,6 @@ export interface AuthResponse {
   refresh_token?: string;
   /** 访问令牌有效期（秒） */
   expires_in?: number;
-  /** 需要第二步动态码：此时 access_token 为空 */
-  requires_totp?: boolean;
-  /** 密码阶段签发的短期挑战，用于 /auth/login/totp */
-  totp_challenge?: string;
-  /** 已登录但被策略要求绑定双因子 */
-  totp_setup_required?: boolean;
 }
 
 export interface UserProfile {

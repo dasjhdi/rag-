@@ -3,13 +3,6 @@
 import time
 
 from app.security.admin_rate_limit import SlidingWindowLimiter
-from app.services import totp_service
-
-
-class _FakeUser:
-    def __init__(self, role: str, totp_enabled: bool = False):
-        self.role = role
-        self.totp_enabled = totp_enabled
 
 
 def test_sliding_window_blocks_after_limit():
@@ -41,12 +34,3 @@ def test_admin_action_mapping():
     assert _admin_action_of("/api/v1/admin/users/{user_id}") == ("user.delete", "user")
     assert _admin_action_of("/api/v1/admin/alerts/check") == ("alert.check", "alert")
 
-
-def test_totp_policy_only_for_super_admin():
-    assert totp_service.is_required_for(_FakeUser("super_admin")) is True
-    # 已绑定则不再拦截
-    assert totp_service.is_required_for(_FakeUser("super_admin", totp_enabled=True)) is False
-    # 普通管理员不强制
-    assert totp_service.is_required_for(_FakeUser("admin")) is False
-    # 普通用户不涉及
-    assert totp_service.is_required_for(_FakeUser("user")) is False

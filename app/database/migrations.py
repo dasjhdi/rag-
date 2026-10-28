@@ -17,12 +17,6 @@ _COLUMN_MIGRATIONS: tuple[tuple[str, str, str], ...] = (
     ("users", "is_active", "BOOLEAN NOT NULL DEFAULT TRUE"),
     ("users", "last_login_at", "TIMESTAMP"),
     ("users", "token_version", "INTEGER NOT NULL DEFAULT 0"),
-    # 双因子：secret 加密落库，恢复码只存哈希
-    ("users", "totp_secret", "TEXT"),
-    ("users", "totp_enabled", "BOOLEAN NOT NULL DEFAULT FALSE"),
-    ("users", "totp_confirmed_at", "TIMESTAMP"),
-    ("users", "totp_last_counter", "INTEGER NOT NULL DEFAULT 0"),
-    ("users", "totp_recovery_codes", "JSON"),
     # 审计：失败也要留痕，并把前后值结构化
     ("admin_audit_logs", "success", "BOOLEAN NOT NULL DEFAULT TRUE"),
     ("admin_audit_logs", "error", "VARCHAR(300)"),

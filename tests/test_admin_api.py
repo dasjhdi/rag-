@@ -83,23 +83,10 @@ async def test_require_admin_rejects_plain_user():
     assert exc.value.status_code == 403
 
 
-async def test_require_admin_accepts_admin_role():
-    user = await require_admin(_user("admin"))
-    assert user.role == "admin"
-
-
-async def test_super_admin_without_totp_is_blocked():
-    """策略：超管未绑定双因子时，后台 API 返回结构化 403。"""
-    with pytest.raises(HTTPException) as exc:
-        await require_admin(_user("super_admin"))
-    assert exc.value.status_code == 403
-    assert exc.value.detail["code"] == "totp_setup_required"
-
-
-async def test_super_admin_with_totp_is_allowed():
-    user = _user("super_admin")
-    user.totp_enabled = True
-    assert (await require_admin(user)).role == "super_admin"
+async def test_require_admin_accepts_every_admin_role():
+    for role in ADMIN_ROLES:
+        user = await require_admin(_user(role))
+        assert user.role == role
 
 
 def test_capability_matrix_is_consistent():

@@ -10,7 +10,6 @@ import { createContext, useContext, useEffect, useMemo, useState, useCallback } 
 import type { ReactNode } from 'react';
 import {
   loginUser,
-  loginTotp,
   registerUser,
   updateProfile as updateUserProfile,
   logout as revokeSession,
@@ -19,21 +18,13 @@ import {
 import { COOKIE_SESSION_TOKEN, STORAGE_KEYS } from '../constants';
 import type { AuthResponse, Credentials, UserProfileUpdateRequest } from '../types';
 
-export interface LoginOutcome {
-  /** 密码正确但还差动态码，调用 loginWithTotp 完成登录 */
-  requiresTotp: boolean;
-  challenge?: string;
-}
-
 export interface AuthContextValue {
   token: string | null;
   username: string | null;
   isAuthenticated: boolean;
   /** 启动时是否已完成会话探测，false 时不应据此重定向 */
   isReady: boolean;
-  login: (credentials: Credentials) => Promise<LoginOutcome>;
-  /** 第二步：用挑战 + 动态码完成登录 */
-  loginWithTotp: (challenge: string, code: string) => Promise<void>;
+  login: (credentials: Credentials) => Promise<void>;
   register: (credentials: Credentials) => Promise<void>;
   /** 默认全端登出；传 { revoke: false } 只清当前浏览器的 Cookie */
   logout: (options?: { revoke?: boolean }) => void;
@@ -101,17 +92,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     purgeLegacyStorage();
   }, []);
 
-  const login = useCallback(async (credentials: Credentials): Promise<LoginOutcome> => {
+  const login = useCallback(async (credentials: Credentials) => {
     const res = await loginUser(credentials);
-    if (res.requires_totp) {
-      return { requiresTotp: true, challenge: res.totp_challenge };
-    }
-    handleAuthSuccess(res);
-    return { requiresTotp: false };
-  }, [handleAuthSuccess]);
-
-  const loginWithTotp = useCallback(async (challenge: string, code: string) => {
-    const res = await loginTotp({ challenge, code });
     handleAuthSuccess(res);
   }, [handleAuthSuccess]);
 
@@ -145,11 +127,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isAuthenticated: Boolean(token),
     isReady,
     login,
-    loginWithTotp,
     register,
     logout,
     updateProfile,
-  }), [token, username, isReady, login, loginWithTotp, register, logout, updateProfile]);
+  }), [token, username, isReady, login, register, logout, updateProfile]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
