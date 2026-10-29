@@ -72,6 +72,12 @@ llm:
     # api_key: Loaded from .env (VISION_API_KEY or LLM_API_KEY)
     temperature: 0.2
     max_tokens: 1024
+    # 单次请求超时（秒）：先给 60s，超时会用更小的图重试一次
+    request_timeout: 60
+    # 送模型前的归一化：长边 1024、JPEG q85、单图不超过 2MB
+    max_image_edge: 1024
+    jpeg_quality: 85
+    max_payload_mb: 2.0
 
 # =============================================================================
 # 2. Embedding Model Configuration

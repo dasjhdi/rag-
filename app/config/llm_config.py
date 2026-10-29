@@ -53,7 +53,11 @@ class VisionLLMConfig(LLMProfileConfig):
     supported_formats: list[str] = Field(
         default_factory=lambda: ["image/jpeg", "image/png", "image/gif", "image/webp"]
     )
-    request_timeout: int = 120
+    request_timeout: int = 60
+    # 送模型前的归一化参数：长边上限、JPEG 质量、单图体积上限
+    max_image_edge: int = 1024
+    jpeg_quality: int = 85
+    max_payload_mb: float = 2.0
 
 
 class LLMConfig(BaseModel):

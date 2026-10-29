@@ -3,16 +3,18 @@ Vision Model Provider
 Provides vision model access using the unified LLMProvider infrastructure.
 """
 
+import asyncio
 import base64
 import logging
 from dataclasses import dataclass
-from typing import List, Optional, Union
+from typing import List, Optional, Tuple, Union
 
-from langchain_core.messages import BaseMessage, HumanMessage
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 
 from app.config import settings
 from app.config.llm_config import VisionLLMConfig
 from app.llm import get_usage_callbacks, llm_context
+from app.vision.image_prep import prepare_image
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +118,91 @@ class VisionProvider:
 
         return HumanMessage(content=content)  # type: ignore
 
+    def _prepare_images(
+        self,
+        images: List[ImageInput],
+        max_edge: int,
+        quality: int,
+        max_bytes: int,
+    ) -> Tuple[List[ImageInput], int, int]:
+        """把 base64 图片按需压缩到模型友好的尺寸；URL 模式原样透传。
+
+        返回 (处理后的图片, 处理前总字节, 处理后总字节)，用于日志度量。
+        """
+        prepared: List[ImageInput] = []
+        before = 0
+        after = 0
+        max_bytes = max(256 * 1024, max_bytes)
+
+        for image in images:
+            if not image.image_data:
+                prepared.append(image)
+                continue
+
+            result = prepare_image(
+                image.image_data,
+                image.mime_type,
+                max_edge=max_edge,
+                quality=quality,
+                max_bytes=max_bytes,
+            )
+            before += result.original_bytes
+            after += result.output_bytes
+            prepared.append(ImageInput.from_base64(result.data, result.mime_type))
+
+            if result.resized:
+                logger.info(
+                    "Vision image normalized: %s -> %s, %.0fKB -> %.0fKB",
+                    result.original_size,
+                    result.output_size,
+                    result.original_bytes / 1024,
+                    result.output_bytes / 1024,
+                )
+            elif result.reason not in ("unchanged",):
+                logger.warning(
+                    "Vision image kept as-is (%s), %.0fKB",
+                    result.reason,
+                    result.original_bytes / 1024,
+                )
+
+        return prepared, before, after
+
+    @staticmethod
+    def _looks_like_timeout(exc: BaseException) -> bool:
+        text = str(exc).lower()
+        return (
+            isinstance(exc, asyncio.TimeoutError)
+            or "timed out" in text
+            or "timeout" in text
+        )
+
+    def _build_messages(
+        self,
+        text: str,
+        images: List[ImageInput],
+        system_prompt: Optional[str],
+    ) -> List[BaseMessage]:
+        messages: List[BaseMessage] = []
+        if system_prompt:
+            messages.append(SystemMessage(content=system_prompt))
+        messages.append(self.build_multimodal_message(text, images))
+        return messages
+
+    async def _invoke(
+        self,
+        messages: List[BaseMessage],
+        model: Optional[str],
+        user_id: Optional[str],
+        conversation_id: Optional[str],
+    ) -> str:
+        with llm_context(self.MODULE_NAME, user_id, conversation_id):
+            response = await self._invoker.ainvoke(
+                messages,
+                model=model,
+                response_format={"type": "json_object"},  # Best effort
+            )
+        return str(response.content)
+
     async def analyze(
         self,
         text: str,
@@ -124,18 +211,11 @@ class VisionProvider:
         user_id: Optional[str] = None,
         conversation_id: Optional[str] = None,
     ) -> str:
-        """
-        Analyze images with text prompt.
+        """分析图片并返回模型输出。
 
-        Args:
-            text: Text prompt/question about the images
-            images: List of images to analyze
-            system_prompt: Optional system prompt for context
-            user_id: User ID for tracking (optional)
-            conversation_id: Conversation ID for tracking (optional)
-
-        Returns:
-            Model's response as string
+        送模型前会按 `max_image_edge` / `jpeg_quality` 归一化：手机原图常见
+        3–8MB、长边 3000+，直接发容易读超时；缩到 1024px 后通常 2–4s 返回。
+        若仍超时，会用更小的图重试一次，再走模型回退。
         """
         if not self.is_enabled:
             raise RuntimeError("Vision module is not enabled or API key is missing")
@@ -143,53 +223,75 @@ class VisionProvider:
         if not images:
             raise ValueError("At least one image is required")
 
-        # Build messages
-        messages: List[BaseMessage] = []
+        config = self.config
+        # 老配置对象可能没有这些字段，取默认值兜底
+        max_edge = int(getattr(config, "max_image_edge", 1024))
+        quality = int(getattr(config, "jpeg_quality", 85))
+        max_payload_mb = float(getattr(config, "max_payload_mb", 2.0))
+        max_bytes = int(max_payload_mb * 1024 * 1024)
 
-        # Add system message if provided
-        if system_prompt:
-            from langchain_core.messages import SystemMessage
+        prepared, before_bytes, after_bytes = self._prepare_images(
+            images, max_edge, quality, max_bytes
+        )
+        if before_bytes:
+            logger.info(
+                "Vision payload: %.0fKB -> %.0fKB (images=%d, edge=%d)",
+                before_bytes / 1024,
+                after_bytes / 1024,
+                len(images),
+                max_edge,
+            )
 
-            messages.append(SystemMessage(content=system_prompt))
-
-        # Build multimodal human message
-        human_msg = self.build_multimodal_message(text, images)
-        messages.append(human_msg)
+        messages = self._build_messages(text, prepared, system_prompt)
 
         logger.info(
-            f"Vision analysis: text='{text[:50]}...', images={len(images)}, "
-            f"model={self.config.model_names[0]}"
+            "Vision analysis: text='%s...', images=%d, model=%s",
+            text[:50],
+            len(images),
+            config.model_names[0] if config.model_names else None,
         )
 
-        models = list(self.config.model_names) or [None]
+        models = list(config.model_names) or [None]
         last_error: Optional[Exception] = None
+        retried_smaller = False
 
         for index, model in enumerate(models):
             try:
-                # Use llm_context for usage tracking
-                with llm_context(self.MODULE_NAME, user_id, conversation_id):
-                    response = await self._invoker.ainvoke(
-                        messages,
-                        model=model,
-                        response_format={
-                            "type": "json_object"
-                        },  # Best effort; ignored if unsupported
+                return await self._invoke(messages, model, user_id, conversation_id)
+            except Exception as exc:
+                error: Exception = exc
+
+                # 超时优先用更小的图重试同一条模型，而不是立刻换模型：
+                # 换模型往往更慢，缩小图片才是对症的。
+                if not retried_smaller and self._looks_like_timeout(exc):
+                    retried_smaller = True
+                    smaller_edge = max(512, int(max_edge * 0.75))
+                    smaller, _, _ = self._prepare_images(
+                        images, smaller_edge, max(60, quality - 10), max_bytes
                     )
-                result = str(response.content)
-                logger.debug(f"Vision response: {result[:200]}...")
-                return result
-            except Exception as e:
-                last_error = e
+                    messages = self._build_messages(text, smaller, system_prompt)
+                    logger.warning(
+                        "Vision call timed out; retrying with edge=%d", smaller_edge
+                    )
+                    try:
+                        return await self._invoke(
+                            messages, model, user_id, conversation_id
+                        )
+                    except Exception as second_exc:
+                        error = second_exc
+
+                last_error = error
                 if index < len(models) - 1:
                     logger.warning(
                         "Vision model %s failed (%s); trying fallback %s",
                         model,
-                        e,
+                        error,
                         models[index + 1],
                     )
                     continue
-                logger.error(f"Vision analysis failed: {e}", exc_info=True)
-                raise
+
+                logger.error("Vision analysis failed: %s", error, exc_info=True)
+                raise error
 
         assert last_error is not None
         raise last_error

@@ -43,14 +43,17 @@ class ImageData(BaseModel):
     @field_validator("data")
     @classmethod
     def validate_image_size(cls, v: str) -> str:
-        """Validate base64 image size."""
-        try:
-            # Calculate approximate decoded size
-            decoded_size = len(v) * 3 / 4
-            if decoded_size > MAX_IMAGE_SIZE_BYTES:
-                raise ValueError(f"图片大小超过限制 ({MAX_IMAGE_SIZE_MB}MB)")
-        except Exception:
-            pass  # If we can't calculate size, let it through for now
+        """按 base64 长度估算解码后体积，超限直接拒绝。
+
+        注意：这里不能把 ValueError 包在 try/except Exception 里——那样会
+        连自己刚抛出的校验错误一起吞掉，限制等于没生效。
+        """
+        # 前端传的是不含前缀的 base64，长度 × 3/4 即解码后字节数
+        decoded_size = len(v) * 3 // 4
+        if decoded_size > MAX_IMAGE_SIZE_BYTES:
+            raise ValueError(
+                f"图片大小超过限制（{MAX_IMAGE_SIZE_MB}MB），请压缩后再上传"
+            )
         return v
 
 
