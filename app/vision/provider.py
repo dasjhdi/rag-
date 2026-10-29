@@ -6,6 +6,7 @@ Provides vision model access using the unified LLMProvider infrastructure.
 import asyncio
 import base64
 import logging
+import time
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
@@ -14,6 +15,7 @@ from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from app.config import settings
 from app.config.llm_config import VisionLLMConfig
 from app.llm import get_usage_callbacks, llm_context
+from app.observability import semantic_metrics
 from app.vision.image_prep import prepare_image
 
 logger = logging.getLogger(__name__)
@@ -254,47 +256,76 @@ class VisionProvider:
         models = list(config.model_names) or [None]
         last_error: Optional[Exception] = None
         retried_smaller = False
+        timed_out = False
+        used_model: Optional[str] = None
+        success = False
+        started = time.perf_counter()
 
-        for index, model in enumerate(models):
-            try:
-                return await self._invoke(messages, model, user_id, conversation_id)
-            except Exception as exc:
-                error: Exception = exc
+        try:
+            for index, model in enumerate(models):
+                try:
+                    answer = await self._invoke(
+                        messages, model, user_id, conversation_id
+                    )
+                    success = True
+                    used_model = model
+                    return answer
+                except Exception as exc:
+                    error: Exception = exc
 
-                # 超时优先用更小的图重试同一条模型，而不是立刻换模型：
-                # 换模型往往更慢，缩小图片才是对症的。
-                if not retried_smaller and self._looks_like_timeout(exc):
-                    retried_smaller = True
-                    smaller_edge = max(512, int(max_edge * 0.75))
-                    smaller, _, _ = self._prepare_images(
-                        images, smaller_edge, max(60, quality - 10), max_bytes
-                    )
-                    messages = self._build_messages(text, smaller, system_prompt)
-                    logger.warning(
-                        "Vision call timed out; retrying with edge=%d", smaller_edge
-                    )
-                    try:
-                        return await self._invoke(
-                            messages, model, user_id, conversation_id
+                    # 超时优先用更小的图重试同一条模型，而不是立刻换模型：
+                    # 换模型往往更慢，缩小图片才是对症的。
+                    if not retried_smaller and self._looks_like_timeout(exc):
+                        timed_out = True
+                        retried_smaller = True
+                        smaller_edge = max(512, int(max_edge * 0.75))
+                        smaller, _, _ = self._prepare_images(
+                            images, smaller_edge, max(60, quality - 10), max_bytes
                         )
-                    except Exception as second_exc:
-                        error = second_exc
+                        messages = self._build_messages(text, smaller, system_prompt)
+                        logger.warning(
+                            "Vision call timed out; retrying with edge=%d", smaller_edge
+                        )
+                        try:
+                            answer = await self._invoke(
+                                messages, model, user_id, conversation_id
+                            )
+                            success = True
+                            used_model = model
+                            return answer
+                        except Exception as second_exc:
+                            error = second_exc
 
-                last_error = error
-                if index < len(models) - 1:
-                    logger.warning(
-                        "Vision model %s failed (%s); trying fallback %s",
-                        model,
-                        error,
-                        models[index + 1],
-                    )
-                    continue
+                    last_error = error
+                    if index < len(models) - 1:
+                        logger.warning(
+                            "Vision model %s failed (%s); trying fallback %s",
+                            model,
+                            error,
+                            models[index + 1],
+                        )
+                        continue
 
-                logger.error("Vision analysis failed: %s", error, exc_info=True)
-                raise error
+                    logger.error("Vision analysis failed: %s", error, exc_info=True)
+                    raise error
 
-        assert last_error is not None
-        raise last_error
+            assert last_error is not None
+            raise last_error
+        finally:
+            # 成功与失败都记一条：失败率、超时率才是排查模型劣化的依据
+            primary_model = models[0] if models else None
+            reported_model = used_model or primary_model
+            semantic_metrics.record_vision(
+                success=success,
+                duration_ms=int((time.perf_counter() - started) * 1000),
+                model=str(reported_model) if reported_model else None,
+                timeout=timed_out,
+                retried_smaller=retried_smaller,
+                fallback=bool(used_model and primary_model and used_model != primary_model),
+                images=len(images),
+                input_bytes=before_bytes,
+                output_bytes=after_bytes,
+            )
 
     def validate_image(
         self, mime_type: str, size_bytes: int

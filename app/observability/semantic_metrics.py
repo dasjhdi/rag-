@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import logging
 import threading
-from collections import defaultdict
-from typing import Any
+from collections import defaultdict, deque
+from typing import Any, Iterable
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +18,15 @@ def _rate(numerator: int, denominator: int) -> float:
     if denominator <= 0:
         return 0.0
     return round(numerator / denominator, 4)
+
+
+def _percentile(values: Iterable[int], quantile: float) -> int:
+    """离散分位数：样本量小的时候比插值更直观，也不会给出小数毫秒。"""
+    ordered = sorted(values)
+    if not ordered:
+        return 0
+    index = int(round((len(ordered) - 1) * quantile))
+    return ordered[max(0, min(index, len(ordered) - 1))]
 
 
 class SemanticMetricsCollector:
@@ -46,6 +55,21 @@ class SemanticMetricsCollector:
 
         self._rerank_total = 0
         self._rerank_fallbacks = 0
+
+        # 视觉链路：耗时、超时、重试与体积压缩
+        self._vision_total = 0
+        self._vision_success = 0
+        self._vision_failed = 0
+        self._vision_timeouts = 0
+        self._vision_retries = 0
+        self._vision_fallbacks = 0
+        self._vision_bytes_in = 0
+        self._vision_bytes_out = 0
+        # 只保留最近 200 次耗时做分位数，内存恒定
+        self._vision_durations: deque[int] = deque(maxlen=200)
+        self._vision_by_model: dict[str, dict[str, int]] = defaultdict(
+            lambda: {"total": 0, "success": 0, "failed": 0}
+        )
 
     def record_intent(
         self, *, intent: str, confidence: float, needs_clarification: bool
@@ -106,6 +130,55 @@ class SemanticMetricsCollector:
             if fallback_used:
                 self._rerank_fallbacks += 1
 
+    def record_vision(
+        self,
+        *,
+        success: bool,
+        duration_ms: int,
+        model: str | None = None,
+        timeout: bool = False,
+        retried_smaller: bool = False,
+        fallback: bool = False,
+        images: int = 1,
+        input_bytes: int = 0,
+        output_bytes: int = 0,
+    ) -> None:
+        """记录一次视觉模型调用（成功或失败）。
+
+        只记计数、耗时与体积，不记图片内容或用户问题。
+        """
+        try:
+            elapsed = max(0, int(duration_ms))
+            model_name = str(model or "unknown")
+            in_bytes = max(0, int(input_bytes or 0))
+            out_bytes = max(0, int(output_bytes or 0))
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Skipping invalid vision metric: %s", exc)
+            return
+
+        with self._lock:
+            self._vision_total += 1
+            self._vision_durations.append(elapsed)
+            stats = self._vision_by_model[model_name]
+            stats["total"] += 1
+
+            if success:
+                self._vision_success += 1
+                stats["success"] += 1
+            else:
+                self._vision_failed += 1
+                stats["failed"] += 1
+
+            if timeout:
+                self._vision_timeouts += 1
+            if retried_smaller:
+                self._vision_retries += 1
+            if fallback:
+                self._vision_fallbacks += 1
+
+            self._vision_bytes_in += in_bytes
+            self._vision_bytes_out += out_bytes
+
     def snapshot(self) -> dict[str, Any]:
         """Return counters plus derived rates."""
         with self._lock:
@@ -145,6 +218,44 @@ class SemanticMetricsCollector:
                     "fallback_rate": _rate(
                         self._rerank_fallbacks, self._rerank_total
                     ),
+                },
+                "vision": {
+                    "total": self._vision_total,
+                    "success": self._vision_success,
+                    "failed": self._vision_failed,
+                    "timeouts": self._vision_timeouts,
+                    "retries_smaller": self._vision_retries,
+                    "fallbacks": self._vision_fallbacks,
+                    "success_rate": _rate(self._vision_success, self._vision_total),
+                    "failure_rate": _rate(self._vision_failed, self._vision_total),
+                    "timeout_rate": _rate(self._vision_timeouts, self._vision_total),
+                    "retry_rate": _rate(self._vision_retries, self._vision_total),
+                    "latency_ms": {
+                        "avg": (
+                            round(sum(self._vision_durations) / len(self._vision_durations))
+                            if self._vision_durations
+                            else 0
+                        ),
+                        "p50": _percentile(self._vision_durations, 0.5),
+                        "p95": _percentile(self._vision_durations, 0.95),
+                        "max": max(self._vision_durations, default=0),
+                        "samples": len(self._vision_durations),
+                    },
+                    "payload": {
+                        "input_bytes": self._vision_bytes_in,
+                        "output_bytes": self._vision_bytes_out,
+                        "saved_ratio": (
+                            round(
+                                1 - self._vision_bytes_out / self._vision_bytes_in, 4
+                            )
+                            if self._vision_bytes_in
+                            else 0.0
+                        ),
+                    },
+                    "by_model": {
+                        model: dict(stats)
+                        for model, stats in self._vision_by_model.items()
+                    },
                 },
             }
 

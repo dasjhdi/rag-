@@ -346,3 +346,64 @@ export function sendAdminAlertTest(
 ): Promise<{ notified: boolean; channel: string }> {
   return apiPost<{ notified: boolean; channel: string }>('/admin/alerts/test', {}, token);
 }
+
+// ---------------------------------------------------------------------------
+// 语义 / 视觉链路指标（进程内计数，重启清零）
+// ---------------------------------------------------------------------------
+export interface VisionMetrics {
+  total: number;
+  success: number;
+  failed: number;
+  timeouts: number;
+  retries_smaller: number;
+  fallbacks: number;
+  success_rate: number;
+  failure_rate: number;
+  timeout_rate: number;
+  retry_rate: number;
+  latency_ms: {
+    avg: number;
+    p50: number;
+    p95: number;
+    max: number;
+    samples: number;
+  };
+  payload: {
+    input_bytes: number;
+    output_bytes: number;
+    saved_ratio: number;
+  };
+  by_model: Record<string, { total: number; success: number; failed: number }>;
+}
+
+export interface SemanticMetrics {
+  intent: {
+    total: number;
+    low_confidence: number;
+    clarification_signals: number;
+    low_confidence_rate: number;
+    clarification_signal_rate: number;
+    by_intent: Record<string, number>;
+  };
+  retrieval: {
+    total: number;
+    hit: number;
+    empty: number;
+    cache_hits: number;
+    cache_misses: number;
+    hit_rate: number;
+    empty_rate: number;
+    cache_hit_rate: number;
+    by_source: Record<string, { total: number; hit: number; empty: number }>;
+  };
+  rerank: {
+    total: number;
+    fallbacks: number;
+    fallback_rate: number;
+  };
+  vision: VisionMetrics;
+}
+
+export function getSemanticMetrics(token: string): Promise<SemanticMetrics> {
+  return apiGet<SemanticMetrics>('/semantic-metrics/summary', token);
+}

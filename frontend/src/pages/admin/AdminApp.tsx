@@ -16,6 +16,7 @@ import {
   BellRing,
   ChevronRight,
   Cpu,
+  Gauge,
   Home,
   LayoutDashboard,
   Loader2,
@@ -38,6 +39,7 @@ import EvaluationPage from '../Evaluation';
 import LLMStatsPage from '../LLMStats';
 import AdminAlerts from './AdminAlerts';
 import AdminAudit from './AdminAudit';
+import AdminMetrics from './AdminMetrics';
 import AdminSessions from './AdminSessions';
 import AdminUsage from './AdminUsage';
 import AdminUsers from './AdminUsers';
@@ -52,7 +54,8 @@ type Section =
   | 'calls'
   | 'sessions'
   | 'audit'
-  | 'alerts';
+  | 'alerts'
+  | 'metrics';
 
 type NavItem = {
   key: Section;
@@ -145,6 +148,17 @@ const NAV: NavItem[] = [
     group: '诊断',
     need: '只读',
     accent: '#e38573',
+  },
+  {
+    key: 'metrics',
+    label: '链路指标',
+    en: 'METRICS',
+    desc: '视觉耗时、超时率与检索/意图命中情况',
+    icon: Gauge,
+    cap: 'read',
+    group: '诊断',
+    need: '只读',
+    accent: '#d3a04c',
   },
   {
     key: 'audit',
@@ -548,6 +562,7 @@ export default function AdminApp() {
                 {activeItem.key === 'alerts' && (
                   <AdminAlerts token={authToken} canRun={capabilities.includes('alerts')} />
                 )}
+                {activeItem.key === 'metrics' && <AdminMetrics token={authToken} />}
               </div>
             )}
           </div>
